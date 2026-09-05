@@ -50,16 +50,33 @@ class EventStore:
     lokalizacji ani nie wykonuje działań systemowych.
     """
 
-    def __init__(self, database: str | Path, *, busy_timeout_ms: int = 5_000) -> None:
+    def __init__(
+        self,
+        database: str | Path,
+        *,
+        busy_timeout_ms: int = 5_000,
+        read_only: bool = False,
+    ) -> None:
         if busy_timeout_ms < 0:
             raise ValueError("busy_timeout_ms must not be negative")
-        self._connection = sqlite3.connect(str(database), isolation_level=None)
+        self._read_only = read_only
+        if read_only:
+            database_uri = f"{Path(database).resolve().as_uri()}?mode=ro"
+            self._connection = sqlite3.connect(
+                database_uri, uri=True, isolation_level=None
+            )
+        else:
+            self._connection = sqlite3.connect(str(database), isolation_level=None)
         self._connection.row_factory = sqlite3.Row
         try:
             self._connection.execute("PRAGMA foreign_keys = ON")
             self._connection.execute(f"PRAGMA busy_timeout = {busy_timeout_ms}")
-            self._connection.execute("PRAGMA journal_mode = WAL")
-            self._initialize_schema()
+            if read_only:
+                self._connection.execute("PRAGMA query_only = ON")
+                self._verify_schema()
+            else:
+                self._connection.execute("PRAGMA journal_mode = WAL")
+                self._initialize_schema()
         except Exception:
             self._connection.close()
             raise
@@ -238,6 +255,32 @@ class EventStore:
             )
         except sqlite3.Error as error:
             raise EventStoreError("Nie udało się zainicjalizować schematu SQLite") from error
+
+    def _verify_schema(self) -> None:
+        """Weryfikuje istniejący schemat bez dokonywania jakiegokolwiek zapisu."""
+
+        try:
+            tables = {
+                row[0]
+                for row in self._connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+            required_tables = {"schema_version", "events", "current_state"}
+            if not required_tables.issubset(tables):
+                raise UnsupportedSchemaVersionError(
+                    "Baza nie zawiera wspieranego schematu PcDog"
+                )
+            versions = self._connection.execute(
+                "SELECT version FROM schema_version"
+            ).fetchall()
+            if len(versions) != 1 or versions[0]["version"] != SCHEMA_VERSION:
+                version = None if not versions else versions[0]["version"]
+                raise UnsupportedSchemaVersionError(
+                    f"Nieobsługiwana wersja schematu: {version}"
+                )
+        except sqlite3.Error as error:
+            raise EventStoreError("Nie udało się zweryfikować schematu SQLite") from error
 
     def _append_event(self, event: DomainEvent) -> None:
         details_json = (

@@ -1,7 +1,8 @@
-"""Czysty model domenowy i State Engine dla PcDog.
+"""Model domenowy oraz bezpieczne warstwy runtime PcDog.
 
-Pakiet nie wykonuje operacji wejścia/wyjścia: nie zna GPIO, SQLite, sieci ani
-systemd. Adaptery tych warstw będą dodawane w osobnych etapach.
+Pakiet nie wykonuje GPIO, sterowania PC ani działań systemd. Warstwy wejść są
+obecnie symulowane, persistence używa standardowego SQLite, a HTTP pozostaje
+wyłącznie lokalnie testowanym API read-only.
 """
 
 from .inputs import FakeInputSource, InputReading, InputSource
@@ -11,6 +12,13 @@ from .event_store import (
     EventStoreError,
     StoredEvent,
     UnsupportedSchemaVersionError,
+)
+from .web_api import (
+    ApiRequestError,
+    PcDogApiServer,
+    ReadOnlyApi,
+    StaticHealthProvider,
+    create_server,
 )
 from .models import (
     DomainEvent,
@@ -26,6 +34,7 @@ from .state_engine import StateEngine, StateUpdate
 
 __all__ = [
     "DomainEvent",
+    "ApiRequestError",
     "EventSource",
     "EventStore",
     "EventStoreError",
@@ -37,11 +46,15 @@ __all__ = [
     "InputReading",
     "InputSource",
     "PcDogState",
+    "PcDogApiServer",
     "PcState",
     "PowerLedState",
+    "ReadOnlyApi",
     "StateEngine",
     "StateSnapshot",
     "StateUpdate",
+    "StaticHealthProvider",
     "StoredEvent",
     "UnsupportedSchemaVersionError",
+    "create_server",
 ]

@@ -28,7 +28,23 @@ GPIO ani żadna interakcja z fizycznymi pinami.
 Schemat ma minimalne wersjonowanie, a baza korzysta z WAL i `busy_timeout`.
 Kod nie narzuca ścieżki pliku; docelową lokalizacją produkcyjną pozostaje
 `/var/lib/pcdog`. W tym etapie nie zmieniono jednak systemd ani uprawnień, nie
-zapisano produkcyjnej bazy na PcDog1 i nadal nie istnieją GPIO ani Web API.
+zapisano produkcyjnej bazy na PcDog1 i nadal nie istnieje adapter GPIO.
+
+## Read-only Web API v1
+
+Pakiet `pcdog_runtime.web_api` udostępnia testowalny serwer standard library,
+który nie jest jeszcze wdrożony na PcDog1. API ma wyłącznie endpointy `GET`:
+
+- `/api/v1/health` zwraca np. `{ "status": "HEALTHY" }`;
+- `/api/v1/state` zwraca snapshot; przy braku snapshotu zwraca stabilne `404`
+  z kodem `STATE_UNAVAILABLE`, nigdy fałszywe `OFF`;
+- `/api/v1/events?limit=50&after_id=123` zwraca eventy rosnąco po ID.
+
+Odpowiedzi są JSON UTF-8, enumy są stringami, a timestampy mają sufiks `Z`.
+Limit eventów ma konfigurowalne maksimum. Nie istnieją endpointy POWER, RESET
+ani Control API; metody inne niż GET zwracają `405`. Testy wiążą serwer tylko z
+loopback i portem efemerycznym. Nie ustalono jeszcze produkcyjnego bindu,
+uwierzytelnienia ani wdrożenia systemd; API nie steruje sprzętem ani GPIO.
 
 ## Model uprawnień
 
