@@ -62,7 +62,7 @@ printf 'Isolated SSH service link' >"$config_dir/strings/0x409/configuration"
 printf '250' >"$config_dir/MaxPower"
 
 mkdir "$function_dir"
-printf 'usb0' >"$function_dir/ifname"
+printf '%s' 'usb%d' >"$function_dir/ifname"
 # Locally administered, stable addresses. The host uses host_addr.
 printf '02:50:43:44:4f:47' >"$function_dir/dev_addr"
 printf '02:50:43:44:4f:48' >"$function_dir/host_addr"

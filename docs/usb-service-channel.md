@@ -1,16 +1,17 @@
 # USB service channel SSH dla PcDog
 
-**Status: NOT VERIFIED / REBOOT AND PHYSICAL USB TEST REQUIRED**
+**Status: NOT VERIFIED / PHYSICAL USB HOST TEST REQUIRED**
 
 Ten dokument opisuje projekt i przygotowanie etapu 1 stałego kanału
-administracyjnego SSH przez USB. Konfiguracja może być zapisana na PcDog1,
+administracyjnego SSH przez USB. Lokalny test ConfigFS bez hosta USB przeszedł,
 ale USB-SSH obecnie **nie jest zweryfikowany**; żaden opis poniżej nie oznacza
-potwierdzonego działania.
+potwierdzonego działania z fizycznym hostem.
 
 ## Zakres i stan faktyczny
 
-Inspekcja była odczytowa. Nie zmieniano PcDog1, nie wykonywano restartu,
-rebootu ani operacji GPIO/POWER/RESET.
+Pierwsza inspekcja była odczytowa. Następnie 5 września 2026 wykonano
+kontrolowaną naprawę `ifname` i test lokalny przy odłączonym kablu USB hosta.
+Nie wykonywano rebootu ani operacji GPIO/POWER/RESET.
 
 Potwierdzony stan PcDog1:
 
@@ -25,8 +26,9 @@ Potwierdzony stan PcDog1:
   `[::]:22`;
 - kernel zawiera `CONFIG_USB_DWC2=y`, ConfigFS oraz moduły
   `libcomposite`, `usb_f_ecm`, `usb_f_rndis` i `usb_f_ncm`;
-- ConfigFS jest zamontowany, ale obecnie nie ma aktywnego UDC, załadowanego
-  gadgetu ani konfiguracji `g_ether`/`libcomposite`;
+- ConfigFS jest zamontowany, a `pcdog-usb-gadget.service` tworzy aktywny gadget
+  ConfigFS zbindowany do UDC `3f980000.usb`; przy odłączonym hoście stan UDC to
+  `not attached`, a `usb0` nie ma carrier;
 - nie znaleziono aktywnych usług nftables, ufw ani firewalld; narzędzia
   `nft`/`iptables` nie są zainstalowane, więc pełna zawartość reguł netfilter
   nie została potwierdzona;
@@ -34,6 +36,35 @@ Potwierdzony stan PcDog1:
   niezależny;
 - pakiet `rpi-usb-gadget` 1.0.6 jest zainstalowany, ale jego usługa jest
   wyłączona i gadget nie jest aktywny.
+
+## Kontrolowany lokalny test bez hosta USB
+
+Test z 5 września 2026 wykonano przy stale odłączonym kablu między portem
+`USB` Pi a Makiem. Poprawka zapisu `ifname` używa literalnego wzorca `usb%d`,
+którego wymaga aktualny kernel, zamiast niedozwolonej stałej nazwy `usb0`.
+
+Potwierdzono lokalnie:
+
+- cleanup usuwa częściowy gadget i `usb0`, bez zmiany Wi-Fi, DNS, default route
+  ani `ip_forward`;
+- start tworzy funkcję ECM, symlink konfiguracji, `usb0` i bind do
+  `3f980000.usb`;
+- `dev_addr=02:50:43:44:4f:47` i `host_addr=02:50:43:44:4f:48`;
+- po aktywacji profilu `pcdog-usb0` Pi ma `172.23.254.1/30`, bez bramy i bez
+  default route przez USB;
+- `pcdog-usb-dhcp.service` działa, nie uruchamia DNS i wiąże sockety wyłącznie
+  z `usb0`; bez hosta nie powstał lease;
+- `sshd` nadal nasłuchuje na `0.0.0.0:22` i `[::]:22`, a SSH przez Wi-Fi oraz
+  `pcdog.service` pozostają aktywne;
+- pojedynczy cykl `stop → cleanup → start` przeszedł bez błędów ConfigFS,
+  ECM ani DWC2.
+
+NetworkManager nie autoaktywował profilu Ethernet przy braku carrier; w teście
+profil został aktywowany jawnie przez uprzywilejowane `nmcli`. Nie jest to test
+zachowania autoconnect po fizycznym podłączeniu hosta.
+
+Nie zweryfikowano enumeracji USB, DHCP po stronie hosta, ruchu Ethernet ani SSH
+przez fizyczny kabel. Te elementy pozostają wymaganym kolejnym testem.
 
 ## Projektowana architektura
 
@@ -71,11 +102,11 @@ Utrata lub błędna konfiguracja `wlan0` nie może usuwać adresu `usb0`, zatrzy
 SSH ani powodować routingu PC przez Wi-Fi. Start Pi bez podłączonego PC ma
 kończyć się normalnie; po podłączeniu gadget ma ponownie się enumerować.
 
-## Decyzje i rekomendacje niezweryfikowane praktycznie
+## Decyzje i rekomendacje niezweryfikowane fizycznie
 
-Powyższa konfiguracja jest projektem, nie wynikiem testu. Nie potwierdzono
-jeszcze enumeracji na rzeczywistym kablu, nazw interfejsów po stronie hosta,
-działania DHCP ani SSH na żadnym z trzech systemów.
+Powyższa konfiguracja przeszła test lokalny bez hosta. Nie potwierdzono jeszcze
+enumeracji na rzeczywistym kablu, nazw interfejsów po stronie hosta, działania
+DHCP ani SSH na żadnym z trzech systemów.
 
 Wariant legacy `g_ether` jest prosty. Oficjalny pakiet Raspberry Pi dobiera
 ECM dla macOS/Linux i RNDIS dla Windows, lecz zawiera mechanizm ICS/routingu;
