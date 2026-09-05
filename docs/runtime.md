@@ -18,6 +18,11 @@ nie zmienia stanu PC. Dostępny `FakeInputSource` służy wyłącznie testom i
 deterministycznej symulacji. Pakiet nie używa GPIO, SQLite, sieci, systemd ani
 sprzętu; adapter wejść i persistence będą osobnymi etapami.
 
+`InputMonitor` działa obecnie wyłącznie z abstrakcyjnym/fake `InputSource`.
+Oddziela czasowy debounce POWER LED oraz politykę hold dla impulsów HDD od
+interpretacji domenowej w State Engine. Nie istnieje jeszcze adapter prawdziwego
+GPIO ani żadna interakcja z fizycznymi pinami.
+
 ## Model uprawnień
 
 Usługa działa jako dedykowany użytkownik systemowy `pcdog`, z grupą `pcdog`,

@@ -5,6 +5,7 @@ systemd. Adaptery tych warstw będą dodawane w osobnych etapach.
 """
 
 from .inputs import FakeInputSource, InputReading, InputSource
+from .input_monitor import InputMonitor, InputMonitorConfig
 from .models import (
     DomainEvent,
     EventSource,
@@ -23,6 +24,8 @@ __all__ = [
     "EventType",
     "FakeInputSource",
     "HddActivity",
+    "InputMonitor",
+    "InputMonitorConfig",
     "InputReading",
     "InputSource",
     "PcDogState",
