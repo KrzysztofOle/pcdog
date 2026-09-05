@@ -34,3 +34,19 @@ sterowania komputerem.
 Ponieważ na obrazie testowym nie było `git`, pierwszy bootstrap otrzymał
 niezmienione archiwum commitu w katalogu tymczasowym. Po zakończeniu bootstrapu
 normalny klon Git do `~/pcdog` wskazał commit `29aa57c` i był czysty.
+
+## Test runtime systemd z 5 września 2026
+
+Runtime systemd został zweryfikowany na tym samym Raspberry Pi Zero 2 W Rev 1.0
+z Raspberry Pi OS Lite 64-bit (`aarch64`). Bootstrap utworzył użytkownika
+systemowego `pcdog` z powłoką `nologin`, bez grupy `gpio`, oraz zainstalował
+`pcdog.service` jako usługę `enabled` i `active`.
+
+Health check potwierdził aktywną usługę, jej główny PID i właściwy proces runtime
+wynikiem `HEALTHY`. Drugi bootstrap zakończył się kodem `0`; PID, czas aktywacji,
+licznik restartów i pojedynczy log startu usługi nie zmieniły się, co potwierdza
+brak niepotrzebnego restartu.
+
+Po kontrolowanym reboocie usługa uruchomiła się automatycznie w bieżącym boocie,
+a `bootstrap.sh --check` i `verify-installation.sh --check` ponownie przeszły.
+Nie testowano GPIO, sterowania PC, watchdoga ani funkcji sieciowych runtime.
