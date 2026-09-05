@@ -1,10 +1,11 @@
 # USB service channel SSH dla PcDog
 
-**Status: PROPOSED / NOT IMPLEMENTED**
+**Status: NOT VERIFIED / REBOOT AND PHYSICAL USB TEST REQUIRED**
 
-Ten dokument zapisuje wynik inspekcji projektu i hosta PcDog1 oraz projekt
-przyszłego, stałego kanału administracyjnego SSH przez USB. USB-SSH obecnie
-**nie działa** i żaden opis poniżej nie oznacza wdrożenia.
+Ten dokument opisuje projekt i przygotowanie etapu 1 stałego kanału
+administracyjnego SSH przez USB. Konfiguracja może być zapisana na PcDog1,
+ale USB-SSH obecnie **nie jest zweryfikowany**; żaden opis poniżej nie oznacza
+potwierdzonego działania.
 
 ## Zakres i stan faktyczny
 
@@ -84,11 +85,41 @@ ConfigFS jest opisany przez [dokumentację kernela Linux](https://docs.kernel.or
 Możliwości OTG Zero 2 W i użycie portu `USB` opisuje [Raspberry Pi](https://www.raspberrypi.com/news/usb-gadget-mode-in-raspberry-pi-os-ssh-over-usb/).
 Obsługę RNDIS w Windows opisuje [Microsoft Learn](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/remote-ndis--rndis-2).
 
+## Przygotowanie etapu 1
+
+Odtwarzalne artefakty są w repozytorium: skrypt ConfigFS
+`runtime/pcdog-usb-gadget.sh`, unity `pcdog-usb-gadget.service` i
+`pcdog-usb-dhcp.service`, profil NetworkManager `config/pcdog-usb0.nmconnection`
+oraz konfiguracja `config/usb-dhcp.conf`. Instaluje je wyłącznie dedykowany
+skrypt:
+
+```bash
+sudo ./scripts/install-usb-service-channel.sh
+```
+
+Skrypt zapisuje kopię aktywnego `/boot/firmware/config.txt` w
+`/var/lib/pcdog/usb-service-channel-backup/config.txt.pre-usb-service`, dodaje
+`dtoverlay=dwc2,dr_mode=peripheral` i włącza unity na kolejny boot. Nie startuje
+gadgetu, DHCP ani NetworkManager w bieżącym boocie. Nie zmienia `cmdline.txt`,
+Wi-Fi, SSH, domyślnej trasy, DNS, NAT ani `ip_forward`.
+
+Pierwsza konfiguracja aktywuje wyłącznie CDC ECM. Tworzy jedno `usb0`, używa
+stałych lokalnie administrowanych MAC i przydziela wyłącznie
+`172.23.254.2/30`; dnsmasq nie uruchamia DNS (`port=0`) ani nie przekazuje
+bramy lub serwerów DNS. Wariant Windows/RNDIS pozostaje przyszłym rozszerzeniem
+funkcji gadgetu, bez zmiany warstwy systemd, NetworkManager czy DHCP.
+
+Kontrola bez zmian:
+
+```bash
+sudo ./scripts/install-usb-service-channel.sh --check
+```
+
 ## Plan wdrożenia
 
 1. Zachować działające SSH po Wi-Fi i przygotować kopie zmienianych plików.
 2. Przygotować unit ConfigFS, profil NetworkManager `usb0` i DHCP, bez ich
-   aktywowania.
+   uruchamiania w bieżącym boocie.
 3. Dodać konfigurację DWC2 oraz moduły, zachowując możliwość wycofania każdej
    zmiany.
 4. Pierwszy test wykonać przy równolegle działającym SSH przez Wi-Fi.
@@ -105,6 +136,24 @@ unitów systemd, profili NetworkManager i konfiguracji DHCP. Wycofanie obejmuje
 zatrzymanie/wyłączenie wyłącznie nowej usługi, odpięcie gadgetu od UDC, usunięcie
 jej konfiguracji oraz przywrócenie kopii plików. Nie usuwać ani nie restartować
 `pcdog.service`; podstawowym kanałem awaryjnym pozostaje SSH przez Wi-Fi.
+
+Przez działające SSH po Wi-Fi wykonaj:
+
+```bash
+sudo systemctl disable --now pcdog-usb-dhcp.service pcdog-usb-gadget.service
+sudo rm -f /etc/systemd/system/pcdog-usb-{gadget,dhcp}.service \
+  /usr/local/lib/pcdog/pcdog-usb-gadget /etc/pcdog/usb-dhcp.conf \
+  /etc/NetworkManager/system-connections/pcdog-usb0.nmconnection \
+  /var/lib/pcdog/usb-dhcp.leases
+sudo install -o root -g root -m 755 \
+  /var/lib/pcdog/usb-service-channel-backup/config.txt.pre-usb-service \
+  /boot/firmware/config.txt
+sudo systemctl daemon-reload
+```
+
+Po wycofaniu overlay wymaga zatwierdzonego rebootu, aby zniknął z uruchomionego
+jądra. Usunięcie pakietów nie jest wymagane: etap używa już zainstalowanego
+`dnsmasq-base`.
 
 ## Kryteria akceptacji
 

@@ -1,0 +1,18 @@
+[Unit]
+Description=PcDog USB ECM service gadget
+Documentation=https://github.com/KrzysztofOle/pcdog
+RequiresMountsFor=/sys/kernel/config
+After=local-fs.target sys-kernel-config.mount systemd-modules-load.service
+Before=pcdog-usb-dhcp.service
+ConditionPathExistsGlob=/sys/class/udc/*
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/pcdog/pcdog-usb-gadget
+ExecStop=/usr/local/lib/pcdog/pcdog-usb-gadget --cleanup
+TimeoutStartSec=20s
+TimeoutStopSec=20s
+
+[Install]
+WantedBy=multi-user.target

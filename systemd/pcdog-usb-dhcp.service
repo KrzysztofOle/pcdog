@@ -1,0 +1,17 @@
+[Unit]
+Description=PcDog DHCP server for the isolated USB service link
+Documentation=https://github.com/KrzysztofOle/pcdog
+Requires=pcdog-usb-gadget.service
+After=pcdog-usb-gadget.service NetworkManager.service
+PartOf=pcdog-usb-gadget.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/test -d /sys/class/net/usb0
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/pcdog/usb-dhcp.conf --pid-file=/run/pcdog-usb-dhcp.pid
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=10s
+
+[Install]
+WantedBy=multi-user.target
