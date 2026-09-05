@@ -4,6 +4,8 @@
 
 This file defines the mandatory collaboration model for the PcDog repository.
 
+Raspberry Pi PcDog1: informacje dotyczące połączenia SSH i diagnostyki znajdują się w [docs/raspberry-pi-access.md](docs/raspberry-pi-access.md).
+
 The project uses three distinct roles:
 
 - Human Authority — final authority and operator.
@@ -604,4 +606,4 @@ When uncertain:
 6. measure when hardware is involved,
 7. stop only when a genuine Human Authority boundary is reached,
 8. never guess about material risk.
-9. 
+9.
