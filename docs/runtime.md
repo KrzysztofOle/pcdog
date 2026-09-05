@@ -23,6 +23,13 @@ Oddziela czasowy debounce POWER LED oraz politykę hold dla impulsów HDD od
 interpretacji domenowej w State Engine. Nie istnieje jeszcze adapter prawdziwego
 GPIO ani żadna interakcja z fizycznymi pinami.
 
+`EventStore` używa standardowej biblioteki `sqlite3`: utrzymuje append-only
+`events` i restart-safe `current_state`, zapisywane atomowo w jednej transakcji.
+Schemat ma minimalne wersjonowanie, a baza korzysta z WAL i `busy_timeout`.
+Kod nie narzuca ścieżki pliku; docelową lokalizacją produkcyjną pozostaje
+`/var/lib/pcdog`. W tym etapie nie zmieniono jednak systemd ani uprawnień, nie
+zapisano produkcyjnej bazy na PcDog1 i nadal nie istnieją GPIO ani Web API.
+
 ## Model uprawnień
 
 Usługa działa jako dedykowany użytkownik systemowy `pcdog`, z grupą `pcdog`,
