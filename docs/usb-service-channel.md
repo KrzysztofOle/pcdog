@@ -1,0 +1,119 @@
+# USB service channel SSH dla PcDog
+
+**Status: PROPOSED / NOT IMPLEMENTED**
+
+Ten dokument zapisuje wynik inspekcji projektu i hosta PcDog1 oraz projekt
+przyszłego, stałego kanału administracyjnego SSH przez USB. USB-SSH obecnie
+**nie działa** i żaden opis poniżej nie oznacza wdrożenia.
+
+## Zakres i stan faktyczny
+
+Inspekcja była odczytowa. Nie zmieniano PcDog1, nie wykonywano restartu,
+rebootu ani operacji GPIO/POWER/RESET.
+
+Potwierdzony stan PcDog1:
+
+- Raspberry Pi Zero 2 W Rev 1.0;
+- Raspberry Pi OS / Debian 13.5 (trixie), architektura `aarch64`;
+- kernel `6.18.34+rpt-rpi-v8`;
+- aktywne pliki boot to `/boot/firmware/config.txt` i
+  `/boot/firmware/cmdline.txt`;
+- aktywny jest NetworkManager 1.52.1; `wlan0` ma adres `192.168.7.162/22`,
+  bramę `192.168.7.1` i DNS `192.168.7.1`;
+- `ssh.service` jest `enabled` i `active`, nasłuchuje na `0.0.0.0:22` oraz
+  `[::]:22`;
+- kernel zawiera `CONFIG_USB_DWC2=y`, ConfigFS oraz moduły
+  `libcomposite`, `usb_f_ecm`, `usb_f_rndis` i `usb_f_ncm`;
+- ConfigFS jest zamontowany, ale obecnie nie ma aktywnego UDC, załadowanego
+  gadgetu ani konfiguracji `g_ether`/`libcomposite`;
+- nie znaleziono aktywnych usług nftables, ufw ani firewalld; narzędzia
+  `nft`/`iptables` nie są zainstalowane, więc pełna zawartość reguł netfilter
+  nie została potwierdzona;
+- `pcdog.service` jest `enabled` i `active`, lecz kanał USB ma być od niego
+  niezależny;
+- pakiet `rpi-usb-gadget` 1.0.6 jest zainstalowany, ale jego usługa jest
+  wyłączona i gadget nie jest aktywny.
+
+## Projektowana architektura
+
+Preferowany jest **ConfigFS + `libcomposite`**, uruchamiany przez osobną
+systemd unit infrastruktury systemowej. Usługa powinna wymagać tylko lokalnego
+systemu plików, ConfigFS i dostępności kontrolera DWC2; nie może wymagać
+`wlan0`, Internetu ani `pcdog.service`.
+
+Gadget powinien udostępniać Ethernet:
+
+- CDC ECM dla macOS i Linux;
+- RNDIS dla Windows 10/11;
+- NCM nie jest wymagany w pierwszej wersji;
+- ECM i RNDIS należy traktować jako alternatywne konfiguracje USB, nie jako
+  przypadkowe dwa interfejsy routowane jednocześnie.
+
+`usb0` ma być tworzony automatycznie po każdym starcie i ponownym podłączeniu
+kabla. Planowana adresacja punkt-punkt:
+
+```text
+Raspberry Pi: 172.23.254.1/30
+PC:          172.23.254.2/30
+```
+
+DHCP ma działać wyłącznie na `usb0`, aby komputer otrzymywał `172.23.254.2`.
+Serwer DHCP nie powinien przekazywać bramy ani DNS. Nie wolno włączać
+domyślnej trasy, `ip_forward`, NAT ani Internet Connection Sharing (ICS).
+Przewidywana komenda użytkownika:
+
+```bash
+ssh krzysztof@172.23.254.1
+```
+
+Utrata lub błędna konfiguracja `wlan0` nie może usuwać adresu `usb0`, zatrzymywać
+SSH ani powodować routingu PC przez Wi-Fi. Start Pi bez podłączonego PC ma
+kończyć się normalnie; po podłączeniu gadget ma ponownie się enumerować.
+
+## Decyzje i rekomendacje niezweryfikowane praktycznie
+
+Powyższa konfiguracja jest projektem, nie wynikiem testu. Nie potwierdzono
+jeszcze enumeracji na rzeczywistym kablu, nazw interfejsów po stronie hosta,
+działania DHCP ani SSH na żadnym z trzech systemów.
+
+Wariant legacy `g_ether` jest prosty. Oficjalny pakiet Raspberry Pi dobiera
+ECM dla macOS/Linux i RNDIS dla Windows, lecz zawiera mechanizm ICS/routingu;
+dlatego nie jest domyślną rekomendacją dla izolowanego kanału PcDog.
+
+ConfigFS jest opisany przez [dokumentację kernela Linux](https://docs.kernel.org/usb/gadget_configfs.html).
+Możliwości OTG Zero 2 W i użycie portu `USB` opisuje [Raspberry Pi](https://www.raspberrypi.com/news/usb-gadget-mode-in-raspberry-pi-os-ssh-over-usb/).
+Obsługę RNDIS w Windows opisuje [Microsoft Learn](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/remote-ndis--rndis-2).
+
+## Plan wdrożenia
+
+1. Zachować działające SSH po Wi-Fi i przygotować kopie zmienianych plików.
+2. Przygotować unit ConfigFS, profil NetworkManager `usb0` i DHCP, bez ich
+   aktywowania.
+3. Dodać konfigurację DWC2 oraz moduły, zachowując możliwość wycofania każdej
+   zmiany.
+4. Pierwszy test wykonać przy równolegle działającym SSH przez Wi-Fi.
+5. Przetestować macOS, Windows 10/11 i Linux: enumerację, adresy, ping, SSH,
+   odłączenie/podłączenie kabla, restart PC i brak Wi-Fi.
+6. Reboot Pi wykonać dopiero po wyraźnym zatwierdzeniu przez Human Authority.
+7. Po teście sprawdzić brak bramy, DNS, tras domyślnych, forwardingu, NAT i ICS.
+8. Dopiero wtedy oznaczyć kanał jako serwisowy.
+
+## Rollback
+
+Przed wdrożeniem zapisać kopie i sumy kontrolne `config.txt`, `cmdline.txt`,
+unitów systemd, profili NetworkManager i konfiguracji DHCP. Wycofanie obejmuje
+zatrzymanie/wyłączenie wyłącznie nowej usługi, odpięcie gadgetu od UDC, usunięcie
+jej konfiguracji oraz przywrócenie kopii plików. Nie usuwać ani nie restartować
+`pcdog.service`; podstawowym kanałem awaryjnym pozostaje SSH przez Wi-Fi.
+
+## Kryteria akceptacji
+
+- po restarcie Pi gadget tworzy `usb0` bez Wi-Fi i bez PC;
+- po podłączeniu PC macOS/Linux używają ECM, a Windows RNDIS;
+- Pi ma `172.23.254.1`, PC otrzymuje `172.23.254.2` przez DHCP;
+- `ssh krzysztof@172.23.254.1` działa po każdym ponownym podłączeniu;
+- brak Wi-Fi nie wpływa na USB-SSH;
+- `usb0` nie instaluje bramy/DNS ani trasy domyślnej i nie uruchamia NAT,
+  forwardingu lub ICS;
+- bieżące SSH po Wi-Fi pozostaje dostępne podczas pierwszego wdrożenia;
+- rollback przywraca poprzedni stan bez utraty `pcdog.service`.
