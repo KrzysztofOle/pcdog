@@ -31,6 +31,8 @@ jeszcze GPIO ani komputerem.
    sudo ./scripts/bootstrap.sh
    ```
 
-Bootstrap instaluje wyłącznie minimalne pakiety (`ca-certificates`, `curl`,
-`git`) i tworzy `/etc/pcdog` oraz `/var/lib/pcdog`. Można go bezpiecznie
-uruchomić ponownie. Szczegóły i ograniczenia są w [dokumentacji systemu](docs/raspberry-pi-os.md).
+Bootstrap instaluje minimalne pakiety (`ca-certificates`, `curl`, `git`),
+tworzy katalogi PcDog i instaluje minimalny runtime jako usługę systemd.
+Można go bezpiecznie uruchomić ponownie. Szczegóły przygotowania systemu są w
+[dokumentacji systemu](docs/raspberry-pi-os.md), a obsługa usługi, logów i
+health check jest opisana w [dokumentacji runtime](docs/runtime.md).

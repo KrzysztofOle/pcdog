@@ -66,11 +66,12 @@ uruchomienia bootstrapu zapewniają obecność `git` idempotentnie.
 `./scripts/bootstrap.sh --check` jest wyłącznie odczytowy i służy do kontroli
 przed instalacją: sprawdza Raspberry Pi OS, architekturę arm64 i model Zero 2 W.
 Po pełnej instalacji można dodatkowo uruchomić
-`./scripts/verify-installation.sh --check`, aby sprawdzić pakiety i katalogi
-PcDog. Zwykły bootstrap najpierw wykonuje ten sam preflight, później instaluje
-mały zestaw zależności i tworzy katalogi przygotowane dla kolejnych komponentów.
-Każdy etap jest bezpieczny do powtórzenia.
+`./scripts/verify-installation.sh --check`, aby sprawdzić pakiety, katalogi,
+runtime i usługę systemd PcDog. Zwykły bootstrap najpierw wykonuje ten sam
+preflight, później instaluje mały zestaw zależności, tworzy katalogi i uruchamia
+minimalny runtime. Każdy etap jest bezpieczny do powtórzenia.
 
-W pierwszej fazie bootstrap celowo nie konfiguruje GPIO, usługi systemd,
-watchdoga, aplikacji PcDog, logowania aplikacyjnego, aktualizacji ani ustawień
-sieci. Te funkcje zostaną dodane jako osobne etapy po ustaleniu ich wymagań.
+Bootstrap celowo nie konfiguruje GPIO, watchdoga, sterowania PC, aktualizacji
+ani ustawień sieci. Minimalny runtime używa wyłącznie systemd i journald;
+szczegóły znajdują się w [dokumentacji runtime](runtime.md). Pozostałe funkcje
+zostaną dodane jako osobne etapy po ustaleniu ich wymagań.

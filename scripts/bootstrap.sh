@@ -28,22 +28,31 @@ fi
 if "$check_only"; then
   log_info 'Uruchamianie preflightu bez zmian.'
   "$script_dir/preflight.sh" --check
+  if [[ -e /etc/systemd/system/pcdog.service || -e /opt/pcdog ]] || getent passwd pcdog >/dev/null 2>&1; then
+    log_info 'Weryfikacja istniejącego runtime PcDog bez zmian.'
+    "$script_dir/install-runtime.sh" --check
+  else
+    log_info 'Runtime PcDog nie jest jeszcze zainstalowany; zwykły bootstrap go przygotuje.'
+  fi
   log_success 'Środowisko spełnia warunki rozpoczęcia bootstrapu.'
   exit 0
 fi
 
 require_root
 
-log_info 'Etap 1/4: preflight środowiska.'
+log_info 'Etap 1/5: preflight środowiska.'
 "$script_dir/preflight.sh"
 
-log_info 'Etap 2/4: minimalne pakiety systemowe.'
+log_info 'Etap 2/5: minimalne pakiety systemowe.'
 "$script_dir/install-system.sh"
 
-log_info 'Etap 3/4: konfiguracja fundamentu systemowego.'
+log_info 'Etap 3/5: konfiguracja fundamentu systemowego.'
 "$script_dir/configure-system.sh"
 
-log_info 'Etap 4/4: weryfikacja instalacji.'
+log_info 'Etap 4/5: runtime PcDog i usługa systemd.'
+"$script_dir/install-runtime.sh"
+
+log_info 'Etap 5/5: weryfikacja instalacji.'
 "$script_dir/verify-installation.sh"
 
 log_success 'Bootstrap PcDog zakończony powodzeniem.'

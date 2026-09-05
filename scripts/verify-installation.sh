@@ -11,7 +11,7 @@ usage() {
   cat <<'EOF'
 Użycie: ./scripts/verify-installation.sh [--check]
 
-Weryfikuje bez modyfikacji preflight, pakiety i układ katalogów PcDog.
+Weryfikuje bez modyfikacji preflight, pakiety, katalogi, runtime i systemd.
 EOF
 }
 
@@ -31,5 +31,8 @@ log_info 'Weryfikacja minimalnych pakietów systemowych.'
 
 log_info 'Weryfikacja układu katalogów systemowych.'
 "$script_dir/configure-system.sh" --check
+
+log_info 'Weryfikacja runtime PcDog, systemd i health check.'
+"$script_dir/install-runtime.sh" --check
 
 log_success 'Instalacja fundamentu PcDog została zweryfikowana.'
