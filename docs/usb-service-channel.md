@@ -90,6 +90,9 @@ PC:          172.23.254.2/30
 ```
 
 DHCP ma działać wyłącznie na `usb0`, aby komputer otrzymywał `172.23.254.2`.
+Profil NetworkManager `pcdog-usb0` nie ustawia `ipv4.dns` ani
+`ipv4.dns-priority`; pozostawienie priorytetu domyślnej wartości `0` oznacza,
+że kanał USB nie konkuruje z DNS normalnego interfejsu, np. `wlan0`.
 Serwer DHCP nie powinien przekazywać bramy ani DNS. Nie wolno włączać
 domyślnej trasy, `ip_forward`, NAT ani Internet Connection Sharing (ICS).
 Przewidywana komenda użytkownika:
@@ -139,6 +142,12 @@ stałych lokalnie administrowanych MAC i przydziela wyłącznie
 `172.23.254.2/30`; dnsmasq nie uruchamia DNS (`port=0`) ani nie przekazuje
 bramy lub serwerów DNS. Wariant Windows/RNDIS pozostaje przyszłym rozszerzeniem
 funkcji gadgetu, bez zmiany warstwy systemd, NetworkManager czy DHCP.
+
+Nie należy dodawać ujemnego `dns-priority` do profilu USB bez własnego serwera
+DNS. NetworkManager może wtedy wykluczyć DNS z innych aktywnych interfejsów
+podczas ponownego przeliczania resolvera, mimo że USB samo DNS-u nie dostarcza.
+DNS i dostęp do Internetu pozostają odpowiedzialnością zwykłego interfejsu
+sieciowego, np. `wlan0`.
 
 Kontrola bez zmian:
 

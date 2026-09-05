@@ -10,7 +10,6 @@ autoconnect-retries=0
 method=manual
 address1=172.23.254.1/30
 never-default=true
-dns-priority=-42
 
 [ipv6]
 method=disabled
