@@ -1,136 +1,86 @@
-# USB Service Channel dla PcDog1 — Windows/RNDIS
+# USB Service Channel dla PcDog1
 
-**Status: Windows/RNDIS verified on PcDog1.** Ten etap celowo nie obejmuje
-ECM ani macOS/Linux.
-
-Kanał USB jest izolowanym kanałem serwisowym do administracji PcDog1, niezależnym
-od Wi-Fi i `pcdog.service`. Nie jest trasą do Internetu, nie używa NAT, Internet
-Connection Sharing (ICS), `ip_forward` ani konfiguracji Windows.
-
-## Zweryfikowany kontrakt Windows
-
-Po podłączeniu PcDog1 do Windows gadget jest wykrywany jako **Remote NDIS
-Compatible Device** z natywnym sterownikiem Microsoft `rndiscmp.inf` i adapterem
-`Ethernet 2`.
+USB Service Channel jest izolowanym połączeniem administracyjnym PcDog1. Używa
+tej samej adresacji niezależnie od wybranego hosta:
 
 ```text
 PcDog1 usb0:       172.23.254.1/30
-Windows przez DHCP: 172.23.254.2/30
+Host przez DHCP:   172.23.254.2/30
 ```
 
-DHCP dla `usb0` nie przekazuje bramy ani DNS. W szczególności
-`dhcp-option=option:router` wysyła pustą opcję Router, dzięki czemu Windows nie
-instaluje default route przez USB. `port=0` w `dnsmasq` wyłącza DNS dla tego
-kanału. Zwykła sieć hosta (np. Wi-Fi) zachowuje własną bramę, DNS oraz dostęp do
-Internetu.
+`dnsmasq` działa wyłącznie na `usb0`, nie oferuje DNS (`port=0`) i wysyła pustą
+opcję routera (`dhcp-option=option:router`). USB nie instaluje więc bramy ani
+default route i nie używa NAT, ICS ani `ip_forward`. Wi-Fi pozostaje kanałem
+administracyjnym podczas każdej zmiany USB.
 
-Przez USB działają `ping`, TCP/22 i SSH do `172.23.254.1`; równocześnie
-zweryfikowano Wi-Fi, rozwiązywanie DNS i HTTPS Internetu na hoście Windows.
+## Jawny tryb hosta
 
-## Konfiguracja gadgetu
+Obsługiwane są dokładnie dwa trwałe tryby:
 
-`runtime/pcdog-usb-gadget.sh` tworzy dokładnie jedną funkcję
-`rndis.usb0` w jednej konfiguracji ConfigFS `c.1`. Nie dodaje ECM jako drugiej
-funkcji ani konfiguracji.
+| Tryb | Funkcja ConfigFS | Przeznaczenie |
+| --- | --- | --- |
+| `windows` | `rndis.usb0` | Windows / Remote NDIS Compatible Device |
+| `mac` | `ecm.usb0` | macOS / CDC ECM |
 
-Funkcja RNDIS używa stałych lokalnie administrowanych MAC oraz literalnego
-wzorca `usb%d`, z którego kernel tworzy `usb0`. Jej IAD ma dokładnie:
+Nie ma trybu `auto` ani `universal`; RNDIS i ECM nigdy nie są wystawiane
+jednocześnie. Nowe i istniejące instalacje bez pliku trybu domyślnie używają
+`windows`, co zachowuje zweryfikowany Windows baseline.
 
-```text
-class=ef
-subclass=04
-protocol=01
+Tryb jest przechowywany w `/etc/pcdog/usb-mode.conf` jako `mode=windows` albo
+`mode=mac`. Runtime `pcdog-usb-gadget` odczytuje go przy każdym tworzeniu
+gadgetu, także po przyszłym reboocie.
+
+```bash
+sudo pcdog-usb-mode windows
+sudo pcdog-usb-mode mac
+pcdog-usb-mode status
 ```
 
-Wartości IAD są zapisywane bez prefiksu `0x`. RNDIS-T04 wykazał, że w tym
-środowisku zapis `0xef`, `0x04` lub `0x01` był interpretowany jako `00`.
+Zmiana trybu zapisuje konfigurację, kontrolowanie odłącza UDC, usuwa poprzednią
+funkcję i linki ConfigFS, buduje jedną właściwą funkcję i ponownie wiąże UDC.
+Host USB musi chwilowo ponownie wyenumerować urządzenie. Nie wymaga to rebootu
+PcDog1; do wykonania przełączenia używaj SSH po Wi-Fi.
 
-Gadget wystawia Microsoft OS descriptors powiązane z konfiguracją `c.1`:
+`status` pokazuje skonfigurowany tryb, aktywną funkcję USB, stan UDC, stan
+`usb0` i adres IPv4 PcDog1.
 
-```text
-use=1
-qw_sign=MSFT100
-b_vendor_code=0xcd
-compatible_id=RNDIS
-```
+## Kontrakt Windows
 
-Powiązanie `os_desc/c.1 -> configs/c.1` jest wymagane, aby Windows odczytał te
-deskryptory dla aktywnej konfiguracji i przypisał natywny sterownik RNDIS.
+Tryb `windows` zachowuje zweryfikowany RNDIS:
 
-## Instalacja i idempotencja
+- funkcja `rndis.usb0`;
+- IAD `class=ef`, `subclass=04`, `protocol=01` — bez prefiksu `0x`;
+- Microsoft OS descriptors: `use=1`, `qw_sign=MSFT100`,
+  `b_vendor_code=0xcd`, `compatible_id=RNDIS` oraz link `os_desc/c.1`;
+- Windows otrzymuje `172.23.254.2/30` bez gateway, DNS i USB default route.
 
-Artefakty ConfigFS, unitów systemd, profilu NetworkManager i konfiguracji DHCP
-instaluje wyłącznie:
+RNDIS-T04, ROUTE-T02 oraz WINDOWS-RNDIS-REBOOT-T01 potwierdziły enumerację
+Remote NDIS Compatible Device z `rndiscmp.inf`, DHCP, `ping`, TCP/22, SSH oraz
+równoległe Wi-Fi/DNS/HTTPS.
+
+## Kontrakt macOS
+
+Tryb `mac` tworzy wyłącznie `ecm.usb0`, zachowując MAC, `usb%d`, adresację i
+izolowany DHCP. Nie tworzy linku `os_desc/c.1` ani nie konfiguruje Microsoft OS
+descriptors dla ECM. Poprawność ConfigFS można zweryfikować po Wi-Fi; pełny test
+hosta macOS jest osobnym eksperymentem.
+
+## Instalacja i weryfikacja
+
+Repozytoryjny installer instaluje runtime, komendę `pcdog-usb-mode`, unity,
+profil NetworkManager i DHCP. Tworzy domyślny plik trybu tylko, gdy jeszcze nie
+istnieje, więc późniejszy upgrade zachowuje wybór hosta.
 
 ```bash
 sudo ./scripts/install-usb-service-channel.sh
-```
-
-Skrypt zapisuje kopię aktywnego `/boot/firmware/config.txt`, dodaje tylko raz
-`dtoverlay=dwc2,dr_mode=peripheral`, aktualizuje pliki docelowe i włącza unity
-na następny boot. Nie uruchamia gadgetu, DHCP ani NetworkManager w bieżącym
-boocie, nie zmienia `cmdline.txt`, Wi-Fi, SSH, routingu, DNS, NAT ani GPIO.
-Można go uruchomić ponownie; kopia pliku boot nie jest nadpisywana.
-
-Kontrola bez zmian:
-
-```bash
 sudo ./scripts/install-usb-service-channel.sh --check
+bash tests/usb-mode-switch-contract.sh
 ```
 
-Statyczny test regresji kontraktów repozytorium (nie dotyka runtime PcDog1):
+Installer nie uruchamia gadgetu, DHCP ani NetworkManager w bieżącym boocie.
+Do natychmiastowej zmiany trybu służy wyłącznie `pcdog-usb-mode`.
 
-```bash
-bash tests/usb-rndis-service-channel-contract.sh
-```
+## Następne eksperymenty
 
-Profil NetworkManager `pcdog-usb0` ustawia tylko `172.23.254.1/30`, ma
-`never-default=true` i nie definiuje DNS. `dnsmasq` wiąże się wyłącznie z
-`usb0` i przydziela wyłącznie `172.23.254.2/30`.
-
-## Wyniki eksperymentów
-
-### RNDIS-T04 — PASS
-
-Na Windows potwierdzono enumerację Remote NDIS Compatible Device, sterownik
-`rndiscmp.inf`, `Ethernet 2`, adresację `/30`, link UP oraz `ping`, TCP/22 i
-SSH przez USB. Na PcDog1 potwierdzono `rndis.usb0`, IAD `ef/04/01`, `usb0`
-`172.23.254.1/30` i carrier/link UP. Potwierdzono także Microsoft OS descriptors
-oraz ich powiązanie z konfiguracją.
-
-### ROUTE-T02 — PASS
-
-Windows otrzymał przez DHCP `172.23.254.2/30` bez gateway, DNS i default route
-przez USB. USB Service Channel obsłużył `ping`, TCP/22 i SSH, nie zakłócając
-Wi-Fi, DNS ani HTTPS Internetu. Poprawką, która utrwala brak bramy, jest
-`dhcp-option=option:router`.
-
-Zakres tych wyników nie obejmuje odtworzenia konfiguracji po reboocie PcDog1.
-
-## Rollback
-
-Przez działające SSH po Wi-Fi można wyłączyć tylko USB Service Channel i
-przywrócić zapisaną kopię pliku boot:
-
-```bash
-sudo systemctl disable --now pcdog-usb-dhcp.service pcdog-usb-gadget.service
-sudo rm -f /etc/systemd/system/pcdog-usb-{gadget,dhcp}.service \
-  /usr/local/lib/pcdog/pcdog-usb-gadget /etc/pcdog/usb-dhcp.conf \
-  /etc/NetworkManager/system-connections/pcdog-usb0.nmconnection \
-  /var/lib/pcdog/usb-dhcp.leases
-sudo install -o root -g root -m 755 \
-  /var/lib/pcdog/usb-service-channel-backup/config.txt.pre-usb-service \
-  /boot/firmware/config.txt
-sudo systemctl daemon-reload
-```
-
-Usunięcie aktywnego overlay wymaga osobno zatwierdzonego rebootu.
-
-## Następny eksperyment: WINDOWS-RNDIS-REBOOT-T01
-
-Celem jest wyłącznie sprawdzenie, czy po reboocie PcDog1 instalacja odtwarza
-ten sam Windows/RNDIS Service Channel: `rndis.usb0`, IAD `ef/04/01`, Microsoft
-OS descriptors, `172.23.254.1/30` ↔ `172.23.254.2/30`, brak USB gateway/DNS/
-default route oraz działające `ping`, TCP/22 i SSH bez naruszenia Wi-Fi.
-Eksperyment wymaga osobnego zatwierdzenia rebootu i nie jest wykonywany w tym
-etapie.
+- `USB-MODE-SWITCH-MAC-T01`: pełny test hosta macOS po przełączeniu na `mac`.
+- `USB-MODE-SWITCH-REBOOT-T01`: persistence ostatnio wybranego trybu po reboot.

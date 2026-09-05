@@ -1,5 +1,5 @@
 [Unit]
-Description=PcDog USB RNDIS service gadget
+Description=PcDog USB service gadget
 Documentation=https://github.com/KrzysztofOle/pcdog
 RequiresMountsFor=/sys/kernel/config
 After=local-fs.target sys-kernel-config.mount systemd-modules-load.service

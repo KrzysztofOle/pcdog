@@ -39,7 +39,8 @@ health check jest opisana w [dokumentacji runtime](docs/runtime.md).
 
 ## USB service channel SSH dla PcDog
 
-Windows/RNDIS Service Channel PcDog1 jest zweryfikowany jako izolowane
-połączenie `172.23.254.1/30` ↔ `172.23.254.2/30`, bez bramy, DNS i default route
-przez USB. Szczegóły, wyniki RNDIS-T04 i ROUTE-T02 oraz granice obecnego etapu
-opisuje [dokumentacja USB Service Channel](docs/usb-service-channel.md).
+USB Service Channel PcDog1 używa izolowanego połączenia
+`172.23.254.1/30` ↔ `172.23.254.2/30`, bez bramy, DNS i default route przez USB.
+Obsługuje jawne tryby `windows` (RNDIS) oraz `mac` (ECM), przełączane przez
+`sudo pcdog-usb-mode windows` lub `sudo pcdog-usb-mode mac`. Szczegóły i
+procedura przełączania są w [dokumentacji USB Service Channel](docs/usb-service-channel.md).
