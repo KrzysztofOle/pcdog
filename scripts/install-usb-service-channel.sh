@@ -19,7 +19,7 @@ usage() {
   cat <<'EOF'
 Użycie: sudo ./scripts/install-usb-service-channel.sh [--check]
 
-Bez argumentów zapisuje konfigurację USB ECM do użycia po następnym,
+Bez argumentów zapisuje konfigurację USB RNDIS dla Windows do użycia po następnym,
 zatwierdzonym reboocie. Nie uruchamia gadgetu, DHCP ani NetworkManager.
 --check tylko weryfikuje przygotowane pliki.
 EOF
@@ -64,7 +64,7 @@ if [[ ! -e "$backup_dir/config.txt.pre-usb-service" ]]; then
 fi
 
 if ! grep -Fxq 'dtoverlay=dwc2,dr_mode=peripheral' "$boot_config"; then
-  printf '\n# PcDog USB ECM service gadget (applies to this Pi Zero 2 W host).\ndtoverlay=dwc2,dr_mode=peripheral\n' >>"$boot_config"
+  printf '\n# PcDog USB RNDIS service gadget (applies to this Pi Zero 2 W host).\ndtoverlay=dwc2,dr_mode=peripheral\n' >>"$boot_config"
 fi
 
 install --directory --owner=root --group=root --mode=755 /usr/local/lib/pcdog

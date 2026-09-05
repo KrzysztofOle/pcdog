@@ -1,153 +1,76 @@
-# USB service channel SSH dla PcDog
+# USB Service Channel dla PcDog1 — Windows/RNDIS
 
-**Status: NOT VERIFIED / PHYSICAL USB HOST TEST REQUIRED**
+**Status: Windows/RNDIS verified on PcDog1.** Ten etap celowo nie obejmuje
+ECM ani macOS/Linux.
 
-Ten dokument opisuje projekt i przygotowanie etapu 1 stałego kanału
-administracyjnego SSH przez USB. Lokalny test ConfigFS bez hosta USB przeszedł,
-ale USB-SSH obecnie **nie jest zweryfikowany**; żaden opis poniżej nie oznacza
-potwierdzonego działania z fizycznym hostem.
+Kanał USB jest izolowanym kanałem serwisowym do administracji PcDog1, niezależnym
+od Wi-Fi i `pcdog.service`. Nie jest trasą do Internetu, nie używa NAT, Internet
+Connection Sharing (ICS), `ip_forward` ani konfiguracji Windows.
 
-## Zakres i stan faktyczny
+## Zweryfikowany kontrakt Windows
 
-Pierwsza inspekcja była odczytowa. Następnie 5 września 2026 wykonano
-kontrolowaną naprawę `ifname` i test lokalny przy odłączonym kablu USB hosta.
-Nie wykonywano rebootu ani operacji GPIO/POWER/RESET.
-
-Potwierdzony stan PcDog1:
-
-- Raspberry Pi Zero 2 W Rev 1.0;
-- Raspberry Pi OS / Debian 13.5 (trixie), architektura `aarch64`;
-- kernel `6.18.34+rpt-rpi-v8`;
-- aktywne pliki boot to `/boot/firmware/config.txt` i
-  `/boot/firmware/cmdline.txt`;
-- aktywny jest NetworkManager 1.52.1; `wlan0` ma adres `192.168.7.162/22`,
-  bramę `192.168.7.1` i DNS `192.168.7.1`;
-- `ssh.service` jest `enabled` i `active`, nasłuchuje na `0.0.0.0:22` oraz
-  `[::]:22`;
-- kernel zawiera `CONFIG_USB_DWC2=y`, ConfigFS oraz moduły
-  `libcomposite`, `usb_f_ecm`, `usb_f_rndis` i `usb_f_ncm`;
-- ConfigFS jest zamontowany, a `pcdog-usb-gadget.service` tworzy aktywny gadget
-  ConfigFS zbindowany do UDC `3f980000.usb`; przy odłączonym hoście stan UDC to
-  `not attached`, a `usb0` nie ma carrier;
-- nie znaleziono aktywnych usług nftables, ufw ani firewalld; narzędzia
-  `nft`/`iptables` nie są zainstalowane, więc pełna zawartość reguł netfilter
-  nie została potwierdzona;
-- `pcdog.service` jest `enabled` i `active`, lecz kanał USB ma być od niego
-  niezależny;
-- pakiet `rpi-usb-gadget` 1.0.6 jest zainstalowany, ale jego usługa jest
-  wyłączona i gadget nie jest aktywny.
-
-## Kontrolowany lokalny test bez hosta USB
-
-Test z 5 września 2026 wykonano przy stale odłączonym kablu między portem
-`USB` Pi a Makiem. Poprawka zapisu `ifname` używa literalnego wzorca `usb%d`,
-którego wymaga aktualny kernel, zamiast niedozwolonej stałej nazwy `usb0`.
-
-Potwierdzono lokalnie:
-
-- cleanup usuwa częściowy gadget i `usb0`, bez zmiany Wi-Fi, DNS, default route
-  ani `ip_forward`;
-- start tworzy funkcję ECM, symlink konfiguracji, `usb0` i bind do
-  `3f980000.usb`;
-- `dev_addr=02:50:43:44:4f:47` i `host_addr=02:50:43:44:4f:48`;
-- po aktywacji profilu `pcdog-usb0` Pi ma `172.23.254.1/30`, bez bramy i bez
-  default route przez USB;
-- `pcdog-usb-dhcp.service` działa, nie uruchamia DNS i wiąże sockety wyłącznie
-  z `usb0`; bez hosta nie powstał lease;
-- `sshd` nadal nasłuchuje na `0.0.0.0:22` i `[::]:22`, a SSH przez Wi-Fi oraz
-  `pcdog.service` pozostają aktywne;
-- pojedynczy cykl `stop → cleanup → start` przeszedł bez błędów ConfigFS,
-  ECM ani DWC2.
-
-NetworkManager nie autoaktywował profilu Ethernet przy braku carrier; w teście
-profil został aktywowany jawnie przez uprzywilejowane `nmcli`. Nie jest to test
-zachowania autoconnect po fizycznym podłączeniu hosta.
-
-Nie zweryfikowano enumeracji USB, DHCP po stronie hosta, ruchu Ethernet ani SSH
-przez fizyczny kabel. Te elementy pozostają wymaganym kolejnym testem.
-
-## Projektowana architektura
-
-Preferowany jest **ConfigFS + `libcomposite`**, uruchamiany przez osobną
-systemd unit infrastruktury systemowej. Usługa powinna wymagać tylko lokalnego
-systemu plików, ConfigFS i dostępności kontrolera DWC2; nie może wymagać
-`wlan0`, Internetu ani `pcdog.service`.
-
-Gadget powinien udostępniać Ethernet:
-
-- CDC ECM dla macOS i Linux;
-- RNDIS dla Windows 10/11;
-- NCM nie jest wymagany w pierwszej wersji;
-- ECM i RNDIS należy traktować jako alternatywne konfiguracje USB, nie jako
-  przypadkowe dwa interfejsy routowane jednocześnie.
-
-`usb0` ma być tworzony automatycznie po każdym starcie i ponownym podłączeniu
-kabla. Planowana adresacja punkt-punkt:
+Po podłączeniu PcDog1 do Windows gadget jest wykrywany jako **Remote NDIS
+Compatible Device** z natywnym sterownikiem Microsoft `rndiscmp.inf` i adapterem
+`Ethernet 2`.
 
 ```text
-Raspberry Pi: 172.23.254.1/30
-PC:          172.23.254.2/30
+PcDog1 usb0:       172.23.254.1/30
+Windows przez DHCP: 172.23.254.2/30
 ```
 
-DHCP ma działać wyłącznie na `usb0`, aby komputer otrzymywał `172.23.254.2`.
-Profil NetworkManager `pcdog-usb0` nie ustawia `ipv4.dns` ani
-`ipv4.dns-priority`; pozostawienie priorytetu domyślnej wartości `0` oznacza,
-że kanał USB nie konkuruje z DNS normalnego interfejsu, np. `wlan0`.
-Serwer DHCP nie powinien przekazywać bramy ani DNS. Nie wolno włączać
-domyślnej trasy, `ip_forward`, NAT ani Internet Connection Sharing (ICS).
-Przewidywana komenda użytkownika:
+DHCP dla `usb0` nie przekazuje bramy ani DNS. W szczególności
+`dhcp-option=option:router` wysyła pustą opcję Router, dzięki czemu Windows nie
+instaluje default route przez USB. `port=0` w `dnsmasq` wyłącza DNS dla tego
+kanału. Zwykła sieć hosta (np. Wi-Fi) zachowuje własną bramę, DNS oraz dostęp do
+Internetu.
 
-```bash
-ssh krzysztof@172.23.254.1
+Przez USB działają `ping`, TCP/22 i SSH do `172.23.254.1`; równocześnie
+zweryfikowano Wi-Fi, rozwiązywanie DNS i HTTPS Internetu na hoście Windows.
+
+## Konfiguracja gadgetu
+
+`runtime/pcdog-usb-gadget.sh` tworzy dokładnie jedną funkcję
+`rndis.usb0` w jednej konfiguracji ConfigFS `c.1`. Nie dodaje ECM jako drugiej
+funkcji ani konfiguracji.
+
+Funkcja RNDIS używa stałych lokalnie administrowanych MAC oraz literalnego
+wzorca `usb%d`, z którego kernel tworzy `usb0`. Jej IAD ma dokładnie:
+
+```text
+class=ef
+subclass=04
+protocol=01
 ```
 
-Utrata lub błędna konfiguracja `wlan0` nie może usuwać adresu `usb0`, zatrzymywać
-SSH ani powodować routingu PC przez Wi-Fi. Start Pi bez podłączonego PC ma
-kończyć się normalnie; po podłączeniu gadget ma ponownie się enumerować.
+Wartości IAD są zapisywane bez prefiksu `0x`. RNDIS-T04 wykazał, że w tym
+środowisku zapis `0xef`, `0x04` lub `0x01` był interpretowany jako `00`.
 
-## Decyzje i rekomendacje niezweryfikowane fizycznie
+Gadget wystawia Microsoft OS descriptors powiązane z konfiguracją `c.1`:
 
-Powyższa konfiguracja przeszła test lokalny bez hosta. Nie potwierdzono jeszcze
-enumeracji na rzeczywistym kablu, nazw interfejsów po stronie hosta, działania
-DHCP ani SSH na żadnym z trzech systemów.
+```text
+use=1
+qw_sign=MSFT100
+b_vendor_code=0xcd
+compatible_id=RNDIS
+```
 
-Wariant legacy `g_ether` jest prosty. Oficjalny pakiet Raspberry Pi dobiera
-ECM dla macOS/Linux i RNDIS dla Windows, lecz zawiera mechanizm ICS/routingu;
-dlatego nie jest domyślną rekomendacją dla izolowanego kanału PcDog.
+Powiązanie `os_desc/c.1 -> configs/c.1` jest wymagane, aby Windows odczytał te
+deskryptory dla aktywnej konfiguracji i przypisał natywny sterownik RNDIS.
 
-ConfigFS jest opisany przez [dokumentację kernela Linux](https://docs.kernel.org/usb/gadget_configfs.html).
-Możliwości OTG Zero 2 W i użycie portu `USB` opisuje [Raspberry Pi](https://www.raspberrypi.com/news/usb-gadget-mode-in-raspberry-pi-os-ssh-over-usb/).
-Obsługę RNDIS w Windows opisuje [Microsoft Learn](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/remote-ndis--rndis-2).
+## Instalacja i idempotencja
 
-## Przygotowanie etapu 1
-
-Odtwarzalne artefakty są w repozytorium: skrypt ConfigFS
-`runtime/pcdog-usb-gadget.sh`, unity `pcdog-usb-gadget.service` i
-`pcdog-usb-dhcp.service`, profil NetworkManager `config/pcdog-usb0.nmconnection`
-oraz konfiguracja `config/usb-dhcp.conf`. Instaluje je wyłącznie dedykowany
-skrypt:
+Artefakty ConfigFS, unitów systemd, profilu NetworkManager i konfiguracji DHCP
+instaluje wyłącznie:
 
 ```bash
 sudo ./scripts/install-usb-service-channel.sh
 ```
 
-Skrypt zapisuje kopię aktywnego `/boot/firmware/config.txt` w
-`/var/lib/pcdog/usb-service-channel-backup/config.txt.pre-usb-service`, dodaje
-`dtoverlay=dwc2,dr_mode=peripheral` i włącza unity na kolejny boot. Nie startuje
-gadgetu, DHCP ani NetworkManager w bieżącym boocie. Nie zmienia `cmdline.txt`,
-Wi-Fi, SSH, domyślnej trasy, DNS, NAT ani `ip_forward`.
-
-Pierwsza konfiguracja aktywuje wyłącznie CDC ECM. Tworzy jedno `usb0`, używa
-stałych lokalnie administrowanych MAC i przydziela wyłącznie
-`172.23.254.2/30`; dnsmasq nie uruchamia DNS (`port=0`) ani nie przekazuje
-bramy lub serwerów DNS. Wariant Windows/RNDIS pozostaje przyszłym rozszerzeniem
-funkcji gadgetu, bez zmiany warstwy systemd, NetworkManager czy DHCP.
-
-Nie należy dodawać ujemnego `dns-priority` do profilu USB bez własnego serwera
-DNS. NetworkManager może wtedy wykluczyć DNS z innych aktywnych interfejsów
-podczas ponownego przeliczania resolvera, mimo że USB samo DNS-u nie dostarcza.
-DNS i dostęp do Internetu pozostają odpowiedzialnością zwykłego interfejsu
-sieciowego, np. `wlan0`.
+Skrypt zapisuje kopię aktywnego `/boot/firmware/config.txt`, dodaje tylko raz
+`dtoverlay=dwc2,dr_mode=peripheral`, aktualizuje pliki docelowe i włącza unity
+na następny boot. Nie uruchamia gadgetu, DHCP ani NetworkManager w bieżącym
+boocie, nie zmienia `cmdline.txt`, Wi-Fi, SSH, routingu, DNS, NAT ani GPIO.
+Można go uruchomić ponownie; kopia pliku boot nie jest nadpisywana.
 
 Kontrola bez zmian:
 
@@ -155,29 +78,39 @@ Kontrola bez zmian:
 sudo ./scripts/install-usb-service-channel.sh --check
 ```
 
-## Plan wdrożenia
+Statyczny test regresji kontraktów repozytorium (nie dotyka runtime PcDog1):
 
-1. Zachować działające SSH po Wi-Fi i przygotować kopie zmienianych plików.
-2. Przygotować unit ConfigFS, profil NetworkManager `usb0` i DHCP, bez ich
-   uruchamiania w bieżącym boocie.
-3. Dodać konfigurację DWC2 oraz moduły, zachowując możliwość wycofania każdej
-   zmiany.
-4. Pierwszy test wykonać przy równolegle działającym SSH przez Wi-Fi.
-5. Przetestować macOS, Windows 10/11 i Linux: enumerację, adresy, ping, SSH,
-   odłączenie/podłączenie kabla, restart PC i brak Wi-Fi.
-6. Reboot Pi wykonać dopiero po wyraźnym zatwierdzeniu przez Human Authority.
-7. Po teście sprawdzić brak bramy, DNS, tras domyślnych, forwardingu, NAT i ICS.
-8. Dopiero wtedy oznaczyć kanał jako serwisowy.
+```bash
+bash tests/usb-rndis-service-channel-contract.sh
+```
+
+Profil NetworkManager `pcdog-usb0` ustawia tylko `172.23.254.1/30`, ma
+`never-default=true` i nie definiuje DNS. `dnsmasq` wiąże się wyłącznie z
+`usb0` i przydziela wyłącznie `172.23.254.2/30`.
+
+## Wyniki eksperymentów
+
+### RNDIS-T04 — PASS
+
+Na Windows potwierdzono enumerację Remote NDIS Compatible Device, sterownik
+`rndiscmp.inf`, `Ethernet 2`, adresację `/30`, link UP oraz `ping`, TCP/22 i
+SSH przez USB. Na PcDog1 potwierdzono `rndis.usb0`, IAD `ef/04/01`, `usb0`
+`172.23.254.1/30` i carrier/link UP. Potwierdzono także Microsoft OS descriptors
+oraz ich powiązanie z konfiguracją.
+
+### ROUTE-T02 — PASS
+
+Windows otrzymał przez DHCP `172.23.254.2/30` bez gateway, DNS i default route
+przez USB. USB Service Channel obsłużył `ping`, TCP/22 i SSH, nie zakłócając
+Wi-Fi, DNS ani HTTPS Internetu. Poprawką, która utrwala brak bramy, jest
+`dhcp-option=option:router`.
+
+Zakres tych wyników nie obejmuje odtworzenia konfiguracji po reboocie PcDog1.
 
 ## Rollback
 
-Przed wdrożeniem zapisać kopie i sumy kontrolne `config.txt`, `cmdline.txt`,
-unitów systemd, profili NetworkManager i konfiguracji DHCP. Wycofanie obejmuje
-zatrzymanie/wyłączenie wyłącznie nowej usługi, odpięcie gadgetu od UDC, usunięcie
-jej konfiguracji oraz przywrócenie kopii plików. Nie usuwać ani nie restartować
-`pcdog.service`; podstawowym kanałem awaryjnym pozostaje SSH przez Wi-Fi.
-
-Przez działające SSH po Wi-Fi wykonaj:
+Przez działające SSH po Wi-Fi można wyłączyć tylko USB Service Channel i
+przywrócić zapisaną kopię pliku boot:
 
 ```bash
 sudo systemctl disable --now pcdog-usb-dhcp.service pcdog-usb-gadget.service
@@ -191,18 +124,13 @@ sudo install -o root -g root -m 755 \
 sudo systemctl daemon-reload
 ```
 
-Po wycofaniu overlay wymaga zatwierdzonego rebootu, aby zniknął z uruchomionego
-jądra. Usunięcie pakietów nie jest wymagane: etap używa już zainstalowanego
-`dnsmasq-base`.
+Usunięcie aktywnego overlay wymaga osobno zatwierdzonego rebootu.
 
-## Kryteria akceptacji
+## Następny eksperyment: WINDOWS-RNDIS-REBOOT-T01
 
-- po restarcie Pi gadget tworzy `usb0` bez Wi-Fi i bez PC;
-- po podłączeniu PC macOS/Linux używają ECM, a Windows RNDIS;
-- Pi ma `172.23.254.1`, PC otrzymuje `172.23.254.2` przez DHCP;
-- `ssh krzysztof@172.23.254.1` działa po każdym ponownym podłączeniu;
-- brak Wi-Fi nie wpływa na USB-SSH;
-- `usb0` nie instaluje bramy/DNS ani trasy domyślnej i nie uruchamia NAT,
-  forwardingu lub ICS;
-- bieżące SSH po Wi-Fi pozostaje dostępne podczas pierwszego wdrożenia;
-- rollback przywraca poprzedni stan bez utraty `pcdog.service`.
+Celem jest wyłącznie sprawdzenie, czy po reboocie PcDog1 instalacja odtwarza
+ten sam Windows/RNDIS Service Channel: `rndis.usb0`, IAD `ef/04/01`, Microsoft
+OS descriptors, `172.23.254.1/30` ↔ `172.23.254.2/30`, brak USB gateway/DNS/
+default route oraz działające `ping`, TCP/22 i SSH bez naruszenia Wi-Fi.
+Eksperyment wymaga osobnego zatwierdzenia rebootu i nie jest wykonywany w tym
+etapie.
