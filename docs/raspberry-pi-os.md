@@ -50,11 +50,18 @@ headless zaleca Raspberry Pi OS Lite i skonfigurowanie zdalnego dostępu w Image
 Po zalogowaniu:
 
 ```bash
+sudo apt-get update
+sudo apt-get install --yes git
 git clone <adres-repozytorium-pcdog>
 cd pcdog
 ./scripts/bootstrap.sh --check
 sudo ./scripts/bootstrap.sh
 ```
+
+`git` jest konieczny przed klonowaniem repozytorium, a niektóre obrazy
+Raspberry Pi OS Lite go nie zawierają. Dwa pierwsze polecenia są dlatego
+jednorazowym warunkiem wejścia obecnej architektury instalatora; późniejsze
+uruchomienia bootstrapu zapewniają obecność `git` idempotentnie.
 
 `./scripts/bootstrap.sh --check` jest wyłącznie odczytowy i służy do kontroli
 przed instalacją: sprawdza Raspberry Pi OS, architekturę arm64 i model Zero 2 W.

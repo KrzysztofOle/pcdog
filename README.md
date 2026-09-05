@@ -9,7 +9,15 @@ jeszcze GPIO ani komputerem.
 1. Przygotuj kartę microSD zgodnie z instrukcją [instalacji Raspberry Pi OS](docs/raspberry-pi-os.md).
 2. Uruchom Raspberry Pi i połącz się przez SSH kluczem publicznym ustawionym w
    Raspberry Pi Imager, np. `ssh <użytkownik>@<hostname>.local`.
-3. Sklonuj repozytorium i uruchom kontrolę środowiska:
+3. Raspberry Pi OS Lite może nie zawierać `git` (tak było na urządzeniu
+   testowym). Jeżeli polecenie `git` nie jest dostępne, zainstaluj je jednorazowo:
+
+   ```bash
+   sudo apt-get update
+   sudo apt-get install --yes git
+   ```
+
+4. Sklonuj repozytorium i uruchom kontrolę środowiska:
 
    ```bash
    git clone <adres-repozytorium-pcdog>
@@ -17,7 +25,7 @@ jeszcze GPIO ani komputerem.
    ./scripts/bootstrap.sh --check
    ```
 
-4. Jeżeli kontrola zakończy się powodzeniem, wykonaj instalację:
+5. Jeżeli kontrola zakończy się powodzeniem, wykonaj instalację:
 
    ```bash
    sudo ./scripts/bootstrap.sh
