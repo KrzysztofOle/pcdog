@@ -127,6 +127,20 @@ install_if_changed() {
   return 0
 }
 
+wait_for_healthy_runtime() {
+  local attempt
+
+  for attempt in {1..10}; do
+    if "$script_dir/health-check.sh" >/dev/null 2>&1; then
+      "$script_dir/health-check.sh"
+      return 0
+    fi
+    sleep 1
+  done
+
+  "$script_dir/health-check.sh"
+}
+
 runtime_changed=false
 unit_changed=false
 
@@ -160,5 +174,5 @@ else
   log_info "${SERVICE_NAME} jest już aktywna; restart nie jest potrzebny."
 fi
 
-"$script_dir/health-check.sh"
+wait_for_healthy_runtime
 log_success 'Runtime PcDog i usługa systemd są gotowe.'
