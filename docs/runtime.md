@@ -5,6 +5,19 @@ runtime nie używa GPIO, nie otwiera portów i nie steruje komputerem. Potwierdz
 wyłącznie, że proces aplikacji może bezpiecznie działać oraz uruchamiać się po
 starcie systemu.
 
+## Czysty model domenowy i State Engine
+
+Repozytorium zawiera także czysty pakiet Python `pcdog_runtime`, który nie jest
+jeszcze uruchamiany przez `pcdog.service`. Definiuje on `PC_STATE` (`OFF`, `ON`,
+`UNKNOWN`), `PCDOG_STATE` (`HEALTHY`, `DEGRADED`, `ERROR`), nietrwały snapshot,
+zdarzenia domenowe oraz State Engine.
+
+State Engine przyjmuje tylko abstrakcyjne `InputReading`: wiarygodny POWER LED
+wyznacza `PC_STATE`, a HDD activity jest przechowywane niezależnie i nigdy samo
+nie zmienia stanu PC. Dostępny `FakeInputSource` służy wyłącznie testom i
+deterministycznej symulacji. Pakiet nie używa GPIO, SQLite, sieci, systemd ani
+sprzętu; adapter wejść i persistence będą osobnymi etapami.
+
 ## Model uprawnień
 
 Usługa działa jako dedykowany użytkownik systemowy `pcdog`, z grupą `pcdog`,
