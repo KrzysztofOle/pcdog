@@ -15,6 +15,14 @@ bez zmian systemowych. Pierwszy bootstrap zainstalował `git` oraz utworzył:
 - `/etc/pcdog` jako `root:root`, tryb `755`,
 - `/var/lib/pcdog` jako `root:root`, tryb `750`.
 
+APT nie usunął żadnego pakietu, ale przy tym pierwszym uruchomieniu zaktualizował
+`curl` oraz biblioteki `libcurl` do bieżącej wersji z repozytorium. Test ujawnił,
+że pierwotne polecenie `apt-get install` może aktualizować już zainstalowane
+pakiety wskazane na liście. Następny commit ogranicza tę operację opcją
+`--no-upgrade`. Poprawiona wersja została ponownie uruchomiona na tym samym
+urządzeniu: zakończyła się kodem `0`, a APT pominął wszystkie trzy już
+zainstalowane pakiety (`0 upgraded, 0 newly installed`).
+
 Drugi, identyczny bootstrap zakończył się powodzeniem bez duplikatów ani zmian
 właścicieli i uprawnień. Po kontrolowanym reboocie urządzenie wróciło przez SSH,
 a `bootstrap.sh --check` i `verify-installation.sh --check` ponownie przeszły.

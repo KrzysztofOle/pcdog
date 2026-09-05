@@ -57,7 +57,7 @@ require_command apt-get
 log_info 'Odświeżanie indeksu pakietów APT.'
 apt-get update
 
-log_info "Zapewnianie pakietów: ${REQUIRED_PACKAGES[*]}"
-DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends "${REQUIRED_PACKAGES[@]}"
+log_info "Zapewnianie pakietów bez aktualizowania już zainstalowanych: ${REQUIRED_PACKAGES[*]}"
+DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends --no-upgrade "${REQUIRED_PACKAGES[@]}"
 
 log_success 'Minimalne pakiety systemowe są gotowe.'
