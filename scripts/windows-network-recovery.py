@@ -26,6 +26,8 @@ from pcdog_runtime.windows_network_recovery import (
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--ssh-user", required=True, help="konto administratora Windows używane przez SSH")
+    result.add_argument("--ssh-host", default=SERVICE_ADDRESS, help=f"host SSH Windows (domyślnie {SERVICE_ADDRESS})")
+    result.add_argument("--identity-file", type=Path, default=Path.home() / ".ssh" / "pcdog_windows_ed25519", help="dedykowany klucz SSH PcDog")
     result.add_argument("--adapter", required=True, help="jawny alias docelowego adaptera internetowego Windows")
     result.add_argument("--recover", action="store_true", help="jawnie wykonaj recovery Level 1")
     result.add_argument("--internet-target", default=DEFAULT_INTERNET_TARGET)
@@ -44,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(json.dumps({"status": "INVALID_ARGUMENT", "error": str(exc)}))
         return int(ExitCode.INVALID_ARGUMENT)
-    runner = SshRunner(args.ssh_user, SERVICE_ADDRESS)
+    runner = SshRunner(args.ssh_user, args.ssh_host, args.identity_file.expanduser())
     if args.recover:
         status, snapshot = recover(runner, args.adapter, args.internet_target, args.dns_name, timing)
     else:

@@ -54,3 +54,9 @@ V1 ręcznej diagnostyki i kontrolowanego recovery Level 1 jest dostępny jako
 restart jawnie wskazanego adaptera internetowego Windows wymaga `--recover` i
 fail-safe chroni adapter USB PcDog. Pełne użycie, statusy oraz procedura
 kontrolowanego live testu są w [dokumentacji Windows network recovery](docs/windows-network-recovery.md).
+
+## Bootstrap klucza SSH PcDog → Windows
+
+Jednorazowy, ręczny bootstrap dedykowanego klucza bez hasła w repozytorium opisuje
+[instrukcja bootstrapu SSH Windows](docs/windows-ssh-bootstrap.md). Po jego powodzeniu
+recovery używa tego klucza w `BatchMode`, bez fallbacku do hasła.

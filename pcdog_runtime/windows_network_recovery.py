@@ -13,12 +13,14 @@ import subprocess
 import time
 from dataclasses import dataclass
 from enum import IntEnum
+from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 
 SERVICE_ADDRESS = "172.23.254.2"
 SERVICE_PREFIX_LENGTH = 30
 SERVICE_DESCRIPTION = "Remote NDIS Compatible Device"
+DEFAULT_IDENTITY_FILE = Path.home() / ".ssh" / "pcdog_windows_ed25519"
 DEFAULT_INTERNET_TARGET = "1.1.1.1"
 DEFAULT_DNS_NAME = "one.one.one.one"
 
@@ -170,13 +172,15 @@ try {{ $dnsResolves = @(Resolve-DnsName -Name $dnsName -ErrorAction Stop).Count 
 
 
 class SshRunner:
-    def __init__(self, user: str, host: str, ssh_command: str = "ssh") -> None:
-        self.user, self.host, self.ssh_command = user, host, ssh_command
+    def __init__(self, user: str, host: str, identity_file: Path = DEFAULT_IDENTITY_FILE, ssh_command: str = "ssh") -> None:
+        self.user, self.host, self.identity_file, self.ssh_command = user, host, identity_file, ssh_command
 
     def run(self, script: str) -> Mapping[str, Any]:
         encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
         command: Sequence[str] = (
-            self.ssh_command, "-o", "ConnectTimeout=10",
+            self.ssh_command, "-o", "ConnectTimeout=10", "-o", "BatchMode=yes",
+            "-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no",
+            "-o", "IdentitiesOnly=yes", "-i", str(self.identity_file),
             f"{self.user}@{self.host}", "powershell.exe", "-NoProfile", "-NonInteractive",
             "-EncodedCommand", encoded,
         )

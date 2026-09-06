@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from pcdog_runtime.windows_network_recovery import (
     ExitCode,
@@ -9,6 +11,7 @@ from pcdog_runtime.windows_network_recovery import (
     powershell_script,
     recover,
     service_interface_is_unambiguously_protected,
+    SshRunner,
 )
 
 
@@ -117,6 +120,17 @@ class WindowsNetworkRecoveryTests(unittest.TestCase):
     def test_remote_fail_safe_is_reported_as_protected(self):
         runner = FakeRunner([healthy_snapshot(), RemoteError("SERVICE_INTERFACE_PROTECTED")])
         self.assertEqual(recover(runner, "Wi-Fi", "1.1.1.1", "example.com", Timing(0, 1, 1), lambda _: None)[0], "SERVICE_INTERFACE_PROTECTED")
+
+    def test_ssh_runner_uses_dedicated_identity_in_batch_mode(self):
+        runner = SshRunner("admin", "172.23.254.2", Path("/tmp/pcdog-key"))
+        with patch("pcdog_runtime.windows_network_recovery.subprocess.run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = '{"kind":"diagnostic"}'
+            self.assertEqual(runner.run("Write-Output ok"), {"kind": "diagnostic"})
+        command = run.call_args.args[0]
+        self.assertIn("BatchMode=yes", command)
+        self.assertIn("PasswordAuthentication=no", command)
+        self.assertEqual(command[command.index("-i") + 1], "/tmp/pcdog-key")
 
 
 if __name__ == "__main__":
