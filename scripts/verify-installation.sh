@@ -32,6 +32,9 @@ log_info 'Weryfikacja minimalnych pakietów systemowych.'
 log_info 'Weryfikacja układu katalogów systemowych.'
 "$script_dir/configure-system.sh" --check
 
+log_info 'Weryfikacja ZeroTier, systemd i statusu CLI.'
+"$script_dir/install-zerotier.sh" --check
+
 log_info 'Weryfikacja runtime PcDog, systemd i health check.'
 "$script_dir/install-runtime.sh" --check
 

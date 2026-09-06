@@ -33,6 +33,8 @@ jeszcze GPIO ani komputerem.
 
 Bootstrap instaluje minimalne pakiety (`ca-certificates`, `curl`, `git`),
 tworzy katalogi PcDog i instaluje minimalny runtime jako usługę systemd.
+Instaluje też ZeroTier jako opcjonalny, dodatkowy kanał łączności; konfiguracja
+Network ID i pierwsze dołączenie są opisane w [dokumentacji ZeroTier](docs/zerotier.md).
 Można go bezpiecznie uruchomić ponownie. Szczegóły przygotowania systemu są w
 [dokumentacji systemu](docs/raspberry-pi-os.md), a obsługa usługi, logów i
 health check jest opisana w [dokumentacji runtime](docs/runtime.md).

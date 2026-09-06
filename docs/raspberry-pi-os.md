@@ -72,6 +72,8 @@ preflight, później instaluje mały zestaw zależności, tworzy katalogi i uruc
 minimalny runtime. Każdy etap jest bezpieczny do powtórzenia.
 
 Bootstrap celowo nie konfiguruje GPIO, watchdoga, sterowania PC, aktualizacji
-ani ustawień sieci. Minimalny runtime używa wyłącznie systemd i journald;
+ani istniejących ustawień Wi-Fi/USB. Jedynym dodatkowym kanałem sieciowym jest
+opcjonalny ZeroTier, który nie zmienia tras ani interfejsów PcDog; szczegóły są
+w [dokumentacji ZeroTier](zerotier.md). Minimalny runtime używa wyłącznie systemd i journald;
 szczegóły znajdują się w [dokumentacji runtime](runtime.md). Pozostałe funkcje
 zostaną dodane jako osobne etapy po ustaleniu ich wymagań.
