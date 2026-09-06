@@ -6,6 +6,27 @@ This file defines the mandatory collaboration model for the PcDog repository.
 
 Raspberry Pi PcDog1: informacje dotyczące połączenia SSH i diagnostyki znajdują się w [docs/raspberry-pi-access.md](docs/raspberry-pi-access.md).
 
+### Administracyjny dostęp SSH do PcDog1
+
+Źródłem prawdy jest działające połączenie z bieżącego środowiska klienta SSH,
+nie historyczna nazwa pliku klucza. Znane kanały PcDog1 to ZeroTier
+`krzysztof@10.71.23.50`, LAN/Wi-Fi `krzysztof@192.168.7.162` oraz USB RNDIS
+`krzysztof@172.23.254.1` tylko wtedy, gdy klient rzeczywiście ma trasę przez
+USB. Adresy IP nie są trwałą tożsamością hosta.
+
+Przy przyszłym zadaniu należy najpierw użyć istniejącej konfiguracji SSH i
+preferować działający znany kanał, np. `ssh krzysztof@<adres> hostname`.
+Wynik musi być równy `PcDog1`. Jeżeli połączenie działa, inna nazwa lub
+fingerprint klucza niż użyte historycznie nie jest blokerem. Dopiero przy
+nieudanym połączeniu należy uruchomić diagnostykę `ssh -v` lub `ssh -G`.
+
+Nie wolno bez potrzeby i właściwego upoważnienia modyfikować kluczy,
+`authorized_keys`, ssh-agent ani konfiguracji SSH; prywatne klucze nie mogą
+być ujawniane w raportach. Podczas ostatniego zweryfikowanego wdrożenia
+użyto `~/.ssh/id_ed25519` przez `publickey` (fingerprint
+`SHA256:V4XdY7JO+/OvtuSEWgLVcwWJXMemoZcyLQz/dru7ahE`); jest to przydatny fakt
+diagnostyczny, nie stały wymóg.
+
 The project uses three distinct roles:
 
 - Human Authority — final authority and operator.
