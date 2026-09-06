@@ -107,12 +107,15 @@ $present = @($existing | Where-Object {{ $_.Trim() -match '^(ssh-[^ ]+)\\s+([^ ]
 if (-not $present) {{ Add-Content -LiteralPath $target -Value $publicKey -Encoding ascii }}
 $acl = New-Object System.Security.AccessControl.FileSecurity
 $acl.SetAccessRuleProtection($true, $false)
+$systemSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
 if ($aclKind -eq 'administrators') {{
-  $acl.SetOwner([System.Security.Principal.NTAccount]'BUILTIN\\Administrators')
-  foreach ($identity in @('BUILTIN\\Administrators', 'NT AUTHORITY\\SYSTEM')) {{ $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow'))) }}
+  $administratorsSid = New-Object System.Security.Principal.SecurityIdentifier([System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+  $acl.SetOwner($administratorsSid)
+  foreach ($identity in @($administratorsSid, $systemSid)) {{ $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow'))) }}
 }} else {{
-  $acl.SetOwner([System.Security.Principal.NTAccount]$env:USERNAME)
-  foreach ($identity in @($env:USERNAME, 'NT AUTHORITY\\SYSTEM')) {{ $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow'))) }}
+  $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+  $acl.SetOwner($userSid)
+  foreach ($identity in @($userSid, $systemSid)) {{ $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow'))) }}
 }}
 Set-Acl -LiteralPath $target -AclObject $acl
 [pscustomobject]@{{ authorized_keys = $target; acl_kind = $aclKind; key_added = (-not $present) }} | ConvertTo-Json -Compress

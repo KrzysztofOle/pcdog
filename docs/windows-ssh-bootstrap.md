@@ -17,7 +17,10 @@ są wyłącznie jednoznaczne, standardowe lokalizacje: profil użytkownika
 typie i materiale klucza, dlatego ponowny bootstrap go nie duplikuje. ACL pliku
 jest ograniczany do właściciela i `SYSTEM` (konto zwykłe) albo `Administrators`
 i `SYSTEM` (plik administratorów). `sshd_config` nie jest modyfikowany ani
-usługa nie jest restartowana.
+usługa nie jest restartowana. ACL są ustawiane przez well-known SID-y:
+`BuiltinAdministratorsSid` dla pliku administratorów, `LocalSystemSid` dla
+`SYSTEM` oraz SID bieżącej tożsamości dla pliku użytkownika. Bootstrap nie
+zależy dzięki temu od języka Windows.
 
 Po pomyślnym bootstrapie `windows-network-recovery.py` domyślnie używa tego
 samego klucza z `BatchMode=yes`, `IdentitiesOnly=yes` i wyłączonym fallbackiem

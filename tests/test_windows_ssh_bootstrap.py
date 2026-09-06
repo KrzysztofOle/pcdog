@@ -93,6 +93,17 @@ class WindowsSshBootstrapTests(unittest.TestCase):
         self.assertIn("if (-not $present) { Add-Content", script)
         self.assertIn("administrators_authorized_keys", script)
 
+    def test_acl_uses_well_known_sids_not_localized_account_names(self):
+        """Regression for Polish Windows where 'Administrators' cannot resolve."""
+        script = installation_script(PUBLIC)
+        self.assertIn("BuiltinAdministratorsSid", script)
+        self.assertIn("LocalSystemSid", script)
+        self.assertIn("WindowsIdentity]::GetCurrent().User", script)
+        self.assertIn("$acl.SetOwner($administratorsSid)", script)
+        self.assertNotIn("BUILTIN\\\\Administrators", script)
+        self.assertNotIn("NT AUTHORITY\\\\SYSTEM", script)
+        self.assertNotIn("$acl.SetOwner([System.Security.Principal.NTAccount]", script)
+
     def test_ambiguous_or_unsupported_sshd_config_stops_before_write(self):
         script = installation_script(PUBLIC)
         self.assertIn("SSHD_CONFIG_AMBIGUOUS", script)
