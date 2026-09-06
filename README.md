@@ -46,3 +46,11 @@ USB Service Channel PcDog1 używa izolowanego połączenia
 Obsługuje jawne tryby `windows` (RNDIS) oraz `mac` (ECM), przełączane przez
 `sudo pcdog-usb-mode windows` lub `sudo pcdog-usb-mode mac`. Szczegóły i
 procedura przełączania są w [dokumentacji USB Service Channel](docs/usb-service-channel.md).
+
+## Ręczna diagnostyka Windows przez USB
+
+V1 ręcznej diagnostyki i kontrolowanego recovery Level 1 jest dostępny jako
+`./scripts/windows-network-recovery.py`. Diagnostyka jest tylko odczytowa;
+restart jawnie wskazanego adaptera internetowego Windows wymaga `--recover` i
+fail-safe chroni adapter USB PcDog. Pełne użycie, statusy oraz procedura
+kontrolowanego live testu są w [dokumentacji Windows network recovery](docs/windows-network-recovery.md).
