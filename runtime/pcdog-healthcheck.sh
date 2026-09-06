@@ -4,7 +4,7 @@
 set -euo pipefail
 
 readonly SERVICE_NAME='pcdog.service'
-readonly RUNTIME_PATH='/opt/pcdog/bin/pcdog-runtime'
+readonly RUNTIME_MODULE='pcdog_runtime.read_only_runtime'
 
 unhealthy() {
   printf 'UNHEALTHY: %s\n' "$*" >&2
@@ -26,7 +26,7 @@ if [[ ! -r "$command_line_path" ]]; then
 fi
 
 command_line="$(tr '\000' ' ' <"$command_line_path")"
-if [[ "$command_line" != *"$RUNTIME_PATH"* ]]; then
+if [[ "$command_line" != *"$RUNTIME_MODULE"* ]]; then
   unhealthy "main process ${main_pid} is not the PcDog runtime"
 fi
 

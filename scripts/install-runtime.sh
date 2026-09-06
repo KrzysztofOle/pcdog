@@ -13,11 +13,29 @@ readonly RUNTIME_GROUP='pcdog'
 readonly RUNTIME_DIRECTORY='/opt/pcdog'
 readonly RUNTIME_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-runtime"
 readonly HEALTH_CHECK_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-healthcheck"
+readonly RUNTIME_LIBRARY_DIRECTORY="$RUNTIME_DIRECTORY/lib"
+readonly RUNTIME_PACKAGE_DIRECTORY="$RUNTIME_LIBRARY_DIRECTORY/pcdog_runtime"
+readonly RUNTIME_WEB_PANEL_DIRECTORY="$RUNTIME_PACKAGE_DIRECTORY/web_panel"
+readonly RUNTIME_DATA_DIRECTORY='/var/lib/pcdog-runtime'
 readonly SERVICE_NAME='pcdog.service'
 readonly SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
 readonly RUNTIME_SOURCE="$project_dir/runtime/pcdog-runtime.sh"
 readonly HEALTH_CHECK_SOURCE="$project_dir/runtime/pcdog-healthcheck.sh"
 readonly SERVICE_SOURCE="$project_dir/systemd/$SERVICE_NAME"
+readonly PYTHON_PACKAGE_SOURCE="$project_dir/pcdog_runtime"
+readonly -a PYTHON_PACKAGE_FILES=(
+  '__init__.py'
+  'event_store.py'
+  'input_monitor.py'
+  'inputs.py'
+  'models.py'
+  'read_only_runtime.py'
+  'state_engine.py'
+  'web_api.py'
+  'web_panel/index.html'
+  'web_panel/pcdog-panel.css'
+  'web_panel/pcdog-panel.js'
+)
 
 usage() {
   cat <<'EOF'
@@ -69,13 +87,18 @@ file_matches() {
 
 runtime_layout_is_correct() {
   local directory_metadata
+  local relative_path
 
-  [[ -d "$RUNTIME_DIRECTORY" && -d "$RUNTIME_DIRECTORY/bin" ]] || return 1
-  directory_metadata="$(stat --format='%u:%g:%a' "$RUNTIME_DIRECTORY" "$RUNTIME_DIRECTORY/bin")"
-  [[ "$directory_metadata" = $'0:0:755\n0:0:755' ]] || return 1
+  [[ -d "$RUNTIME_DIRECTORY" && -d "$RUNTIME_DIRECTORY/bin" && -d "$RUNTIME_LIBRARY_DIRECTORY" && -d "$RUNTIME_PACKAGE_DIRECTORY" && -d "$RUNTIME_WEB_PANEL_DIRECTORY" ]] || return 1
+  directory_metadata="$(stat --format='%u:%g:%a' "$RUNTIME_DIRECTORY" "$RUNTIME_DIRECTORY/bin" "$RUNTIME_LIBRARY_DIRECTORY" "$RUNTIME_PACKAGE_DIRECTORY" "$RUNTIME_WEB_PANEL_DIRECTORY")"
+  [[ "$directory_metadata" = $'0:0:755\n0:0:755\n0:0:755\n0:0:755\n0:0:755' ]] || return 1
   file_matches "$RUNTIME_SOURCE" "$RUNTIME_BINARY" 755 || return 1
   file_matches "$HEALTH_CHECK_SOURCE" "$HEALTH_CHECK_BINARY" 755 || return 1
-  file_matches "$SERVICE_SOURCE" "$SERVICE_PATH" 644
+  file_matches "$SERVICE_SOURCE" "$SERVICE_PATH" 644 || return 1
+  for relative_path in "${PYTHON_PACKAGE_FILES[@]}"; do
+    file_matches "$PYTHON_PACKAGE_SOURCE/$relative_path" "$RUNTIME_PACKAGE_DIRECTORY/$relative_path" 644 || return 1
+  done
+  [[ "$(stat --format='%U:%G:%a' "$RUNTIME_DATA_DIRECTORY")" = 'pcdog:pcdog:750' ]]
 }
 
 if "$check_only"; then
@@ -112,7 +135,12 @@ else
 fi
 
 log_info "Przygotowanie katalogu runtime ${RUNTIME_DIRECTORY}."
-install --directory --owner=root --group=root --mode=755 "$RUNTIME_DIRECTORY" "$RUNTIME_DIRECTORY/bin"
+install --directory --owner=root --group=root --mode=755 \
+  "$RUNTIME_DIRECTORY" \
+  "$RUNTIME_DIRECTORY/bin" \
+  "$RUNTIME_LIBRARY_DIRECTORY" \
+  "$RUNTIME_PACKAGE_DIRECTORY" \
+  "$RUNTIME_WEB_PANEL_DIRECTORY"
 
 install_if_changed() {
   local source_path="$1"
@@ -150,6 +178,11 @@ fi
 if install_if_changed "$HEALTH_CHECK_SOURCE" "$HEALTH_CHECK_BINARY" 755; then
   runtime_changed=true
 fi
+for relative_path in "${PYTHON_PACKAGE_FILES[@]}"; do
+  if install_if_changed "$PYTHON_PACKAGE_SOURCE/$relative_path" "$RUNTIME_PACKAGE_DIRECTORY/$relative_path" 644; then
+    runtime_changed=true
+  fi
+done
 if install_if_changed "$SERVICE_SOURCE" "$SERVICE_PATH" 644; then
   unit_changed=true
 fi
@@ -175,4 +208,10 @@ else
 fi
 
 wait_for_healthy_runtime
+runtime_data_layout_is_correct() {
+  [[ -d "$RUNTIME_DATA_DIRECTORY" ]] || return 1
+  [[ "$(stat --format='%U:%G:%a' "$RUNTIME_DATA_DIRECTORY")" = 'pcdog:pcdog:750' ]]
+}
+
+runtime_data_layout_is_correct || die "Katalog danych ${RUNTIME_DATA_DIRECTORY} nie ma oczekiwanych uprawnień."
 log_success 'Runtime PcDog i usługa systemd są gotowe.'

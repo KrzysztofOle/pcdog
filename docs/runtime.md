@@ -1,9 +1,8 @@
 # Runtime PcDog i usługa systemd
 
-Bootstrap instaluje minimalny runtime PcDog jako `pcdog.service`. W tej fazie
-runtime nie używa GPIO, nie otwiera portów i nie steruje komputerem. Potwierdza
-wyłącznie, że proces aplikacji może bezpiecznie działać oraz uruchamiać się po
-starcie systemu.
+Instalator runtime instaluje `pcdog.service` jako read-only Web API i Web Panel.
+Usługa nie używa GPIO i nie steruje komputerem. Udostępnia wyłącznie odczyt
+Event Store przez HTTP; nie zawiera POWER, RESET ani Control API.
 
 ## Czysty model domenowy i State Engine
 
@@ -32,8 +31,8 @@ zapisano produkcyjnej bazy na PcDog1 i nadal nie istnieje adapter GPIO.
 
 ## Read-only Web API v1
 
-Pakiet `pcdog_runtime.web_api` udostępnia testowalny serwer standard library,
-który nie jest jeszcze wdrożony na PcDog1. API ma wyłącznie endpointy `GET`:
+Pakiet `pcdog_runtime.web_api` udostępnia serwer standard library z wyłącznie
+endpointami `GET`:
 
 - `/api/v1/health` zwraca np. `{ "status": "HEALTHY" }`;
 - `/api/v1/state` zwraca snapshot; przy braku snapshotu zwraca stabilne `404`
@@ -44,7 +43,7 @@ Odpowiedzi są JSON UTF-8, enumy są stringami, a timestampy mają sufiks `Z`.
 Limit eventów ma konfigurowalne maksimum. Nie istnieją endpointy POWER, RESET
 ani Control API; metody inne niż GET zwracają `405`. Testy wiążą serwer tylko z
 loopback i portem efemerycznym. Nie ustalono jeszcze produkcyjnego bindu,
-uwierzytelnienia ani wdrożenia systemd; API nie steruje sprzętem ani GPIO.
+uwierzytelnienia produkcyjnego; API nie steruje sprzętem ani GPIO.
 
 ## Web Panel obserwacyjny
 
@@ -61,6 +60,24 @@ trwa. Timestampy API w UTC są wyświetlane spójnie jako czas lokalny przegląd
 Brak snapshotu (`STATE_UNAVAILABLE`) albo błąd odczytu stanu jest pokazywany jako
 `UNKNOWN` / „brak danych”, nigdy jako `OFF`. Wyniki endpointów są obsługiwane
 niezależnie: niedostępna historia nie ukrywa dostępnego stanu PC.
+
+## Wdrożenie read-only na PcDog1
+
+`pcdog.service` uruchamia `pcdog_runtime.read_only_runtime` pod Pythonem 3 bez
+`pip` ani zewnętrznych zależności. Produkcyjny bind IPv4 to `0.0.0.0:8080`; nie
+jest tworzony wildcard IPv6. Baza znajduje się w
+`/var/lib/pcdog-runtime/pcdog.sqlite3`. Jest to bezpieczniejszy wariant niż
+preferowany podkatalog `/var/lib/pcdog/runtime`: istniejący rodzic
+`/var/lib/pcdog` ma `root:root 0750`, więc udostępnienie jego podkatalogu
+użytkownikowi usługi wymagałoby osłabienia ochrony artefaktów USB/DHCP.
+`StateDirectory=pcdog-runtime` tworzy wydzielony katalog `pcdog:pcdog 0750`,
+gdzie SQLite może tworzyć pliki WAL/SHM bez dostępu do pozostałych danych.
+
+Przy `ProtectSystem=strict` katalog skonfigurowany przez `StateDirectory` jest
+jedyną ścieżką zapisu usługi; `PrivateDevices=yes` i pozostały hardening
+pozostają aktywne. Do wdrożenia samego runtime należy używać
+`sudo ./scripts/install-runtime.sh`, a nie pełnego bootstrapu, aby nie dotykać
+niepowiązanych komponentów systemowych.
 
 ## Model uprawnień
 

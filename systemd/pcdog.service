@@ -1,5 +1,5 @@
 [Unit]
-Description=PcDog minimal runtime
+Description=PcDog read-only Web API and Web Panel
 Documentation=https://github.com/KrzysztofOle/pcdog
 After=network.target
 
@@ -24,6 +24,8 @@ ProtectHome=yes
 ProtectKernelModules=yes
 ProtectKernelTunables=yes
 ProtectSystem=strict
+StateDirectory=pcdog-runtime
+StateDirectoryMode=0750
 RestrictSUIDSGID=yes
 LockPersonality=yes
 CapabilityBoundingSet=

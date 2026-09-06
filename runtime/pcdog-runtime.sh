@@ -1,20 +1,13 @@
 #!/usr/bin/env bash
-# Minimal PcDog runtime. It deliberately has no hardware or network access.
+# Read-only PcDog runtime. It deliberately has no GPIO or PC control access.
 
-set -u
+set -eu
 
-readonly RUNTIME_VERSION='pcdog-runtime-1'
+readonly RUNTIME_LIBRARY='/opt/pcdog/lib'
+readonly RUNTIME_DATABASE='/var/lib/pcdog-runtime/pcdog.sqlite3'
 
-stop_runtime() {
-  printf 'PcDog runtime stopping (version=%s pid=%s)\n' "$RUNTIME_VERSION" "$$"
-  exit 0
-}
-
-trap stop_runtime INT TERM
-
-printf 'PcDog runtime started (version=%s pid=%s)\n' "$RUNTIME_VERSION" "$$"
-
-while :; do
-  sleep 3600 &
-  wait "$!" || true
-done
+export PYTHONPATH="$RUNTIME_LIBRARY"
+exec /usr/bin/python3 -m pcdog_runtime.read_only_runtime \
+  --database "$RUNTIME_DATABASE" \
+  --host 0.0.0.0 \
+  --port 8080
