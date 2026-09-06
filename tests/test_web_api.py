@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from http.client import HTTPConnection
 import json
 from pathlib import Path
+import re
 from tempfile import TemporaryDirectory
 from threading import Thread
 import unittest
@@ -92,6 +93,16 @@ class WebApiTests(unittest.TestCase):
         connection.close()
         return response.status, content_type, payload
 
+    def raw_request(self, path: str) -> tuple[int, str, str]:
+        host, port = self.server.server_address
+        connection = HTTPConnection(host, port, timeout=2)
+        connection.request("GET", path)
+        response = connection.getresponse()
+        content_type = response.getheader("Content-Type")
+        body = response.read().decode("utf-8")
+        connection.close()
+        return response.status, content_type, body
+
     def write(self, events: list[DomainEvent], state: StateSnapshot) -> None:
         with EventStore(self.database) as store:
             store.persist(events=events, snapshot=state)
@@ -101,6 +112,25 @@ class WebApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(content_type, "application/json; charset=utf-8")
         self.assertEqual(payload, {"status": "HEALTHY"})
+
+    def test_root_serves_observational_web_panel_as_html(self) -> None:
+        status, content_type, body = self.raw_request("/")
+        self.assertEqual(status, 200)
+        self.assertEqual(content_type, "text/html; charset=utf-8")
+        self.assertIn("PC STATUS", body)
+        self.assertIn("PCDOG STATUS", body)
+        self.assertIn("RECENT EVENTS", body)
+
+    def test_web_panel_static_assets_are_available_with_explicit_types(self) -> None:
+        for path, content_type in (
+            ("/static/pcdog-panel.css", "text/css; charset=utf-8"),
+            ("/static/pcdog-panel.js", "application/javascript; charset=utf-8"),
+        ):
+            with self.subTest(path=path):
+                status, received_type, body = self.raw_request(path)
+                self.assertEqual(status, 200)
+                self.assertEqual(received_type, content_type)
+                self.assertTrue(body)
 
     def test_state_serializes_enums_and_utc_timestamp(self) -> None:
         self.write([], snapshot())
@@ -171,6 +201,61 @@ class WebApiTests(unittest.TestCase):
 
     def _raise_event_store_error(self) -> EventStore:
         raise EventStoreError(f"internal path: {self.database}")
+
+
+class WebPanelSourceTests(unittest.TestCase):
+    """Kontrakty UI możliwe do sprawdzenia bez przeglądarki lub Node.js."""
+
+    panel_directory = Path(__file__).parents[1] / "pcdog_runtime" / "web_panel"
+
+    @property
+    def javascript(self) -> str:
+        return (self.panel_directory / "pcdog-panel.js").read_text(encoding="utf-8")
+
+    @property
+    def stylesheet(self) -> str:
+        return (self.panel_directory / "pcdog-panel.css").read_text(encoding="utf-8")
+
+    def test_panel_uses_only_three_read_only_api_endpoints(self) -> None:
+        endpoints = set(re.findall(r'["`](/api/v1/[^?"`]+)', self.javascript))
+        self.assertEqual(
+            endpoints,
+            {"/api/v1/health", "/api/v1/state", "/api/v1/events"},
+        )
+        self.assertIn('method: "GET"', self.javascript)
+        self.assertNotRegex(self.javascript.lower(), r"/api/v1/(power|reset|control)")
+
+    def test_panel_has_no_controls_or_external_assets(self) -> None:
+        html = (self.panel_directory / "index.html").read_text(encoding="utf-8").lower()
+        self.assertNotIn("<button", html)
+        self.assertNotIn("<form", html)
+        self.assertNotIn("http://", html)
+        self.assertNotIn("https://", html)
+        self.assertNotIn("http://", self.stylesheet)
+        self.assertNotIn("https://", self.stylesheet)
+        self.assertNotIn("websocket", self.javascript.lower())
+        self.assertNotIn("eventsource", self.javascript.lower())
+
+    def test_state_values_have_text_and_non_color_visual_distinction(self) -> None:
+        self.assertIn("element.textContent = shown", self.javascript)
+        self.assertIn("renderUnavailableState", self.javascript)
+        self.assertIn('setBadge("pc-state", "UNKNOWN")', self.javascript)
+        for css_class in (".badge-on", ".badge-off", ".badge-unknown"):
+            self.assertIn(css_class, self.stylesheet)
+
+    def test_health_states_and_event_failures_are_presentable(self) -> None:
+        for css_class in (".badge-healthy", ".badge-degraded", ".badge-error"):
+            self.assertIn(css_class, self.stylesheet)
+        self.assertIn("Promise.allSettled", self.javascript)
+        self.assertIn("renderEventsUnavailable", self.javascript)
+        self.assertIn("Brak zapisanych zdarzeń.", self.javascript)
+        self.assertIn("STATE_UNAVAILABLE", self.javascript)
+
+    def test_polling_is_configurable_and_does_not_overlap(self) -> None:
+        self.assertIn("pollingIntervalMs: 5000", self.javascript)
+        self.assertIn("eventsLimit: 25", self.javascript)
+        self.assertIn("if (refreshInFlight) return", self.javascript)
+        self.assertIn("window.setInterval(refresh, CONFIG.pollingIntervalMs)", self.javascript)
 
 
 if __name__ == "__main__":

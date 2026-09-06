@@ -46,6 +46,22 @@ ani Control API; metody inne niż GET zwracają `405`. Testy wiążą serwer tyl
 loopback i portem efemerycznym. Nie ustalono jeszcze produkcyjnego bindu,
 uwierzytelnienia ani wdrożenia systemd; API nie steruje sprzętem ani GPIO.
 
+## Web Panel obserwacyjny
+
+Ten sam testowalny serwer HTTP udostępnia minimalny panel statyczny pod `GET /`
+oraz jego lokalne zasoby pod `/static/pcdog-panel.css` i
+`/static/pcdog-panel.js`. Panel nie wymaga Node.js, procesu build, CDN ani
+zewnętrznej sieci. Jest wyłącznie klientem `GET /api/v1/health`,
+`GET /api/v1/state` i `GET /api/v1/events?limit=N`; nie ma kontrolek ani
+endpointów POWER, RESET czy Control API.
+
+Domyślnie panel odświeża dane co 5 sekund (stała `pollingIntervalMs` w pliku
+JavaScript), nie rozpoczynając drugiego odświeżenia, gdy poprzednie jeszcze
+trwa. Timestampy API w UTC są wyświetlane spójnie jako czas lokalny przeglądarki.
+Brak snapshotu (`STATE_UNAVAILABLE`) albo błąd odczytu stanu jest pokazywany jako
+`UNKNOWN` / „brak danych”, nigdy jako `OFF`. Wyniki endpointów są obsługiwane
+niezależnie: niedostępna historia nie ukrywa dostępnego stanu PC.
+
 ## Model uprawnień
 
 Usługa działa jako dedykowany użytkownik systemowy `pcdog`, z grupą `pcdog`,

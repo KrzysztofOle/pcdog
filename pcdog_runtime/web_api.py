@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+from pathlib import Path
 from typing import Protocol
 from urllib.parse import parse_qs, urlparse
 
@@ -30,6 +31,12 @@ class StaticHealthProvider:
 
 
 EventStoreFactory = Callable[[], EventStore]
+WEB_PANEL_DIRECTORY = Path(__file__).with_name("web_panel")
+_STATIC_FILES = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/static/pcdog-panel.css": ("pcdog-panel.css", "text/css; charset=utf-8"),
+    "/static/pcdog-panel.js": ("pcdog-panel.js", "application/javascript; charset=utf-8"),
+}
 
 
 class ApiRequestError(ValueError):
@@ -178,6 +185,10 @@ class _ReadOnlyRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - nazwa wymagana przez BaseHTTPRequestHandler
         parsed = urlparse(self.path)
+        static_file = _STATIC_FILES.get(parsed.path)
+        if static_file is not None and not parsed.query:
+            self._write_static(*static_file)
+            return
         try:
             payload = self.api.handle_get(parsed.path, parse_qs(parsed.query, True))
             self._write_json(200, payload)
@@ -216,6 +227,21 @@ class _ReadOnlyRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _write_static(self, filename: str, content_type: str) -> None:
+        """Zwraca wyłącznie jawnie dozwolone, lokalne zasoby Web Panelu."""
+
+        try:
+            body = (WEB_PANEL_DIRECTORY / filename).read_bytes()
+        except OSError:
+            self._write_error(500, "STATIC_ASSET_UNAVAILABLE", "Panel jest niedostępny")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
