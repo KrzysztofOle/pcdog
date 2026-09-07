@@ -9,6 +9,7 @@ from typing import Sequence
 
 from .event_store import EventStore
 from .web_api import create_server
+from .web_auth import WebAuthenticator
 
 
 # StateDirectory=pcdog-runtime zapewnia własność pcdog bez osłabiania dostępu
@@ -16,6 +17,7 @@ from .web_api import create_server
 DEFAULT_DATABASE = Path("/var/lib/pcdog-runtime/pcdog.sqlite3")
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8080
+DEFAULT_AUTH_CONFIG = Path("/etc/pcdog/web-auth.json")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--database", type=Path, default=DEFAULT_DATABASE)
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--auth-config", type=Path, default=DEFAULT_AUTH_CONFIG)
     return parser
 
 
@@ -35,7 +38,9 @@ def initialize_event_store(database: Path) -> None:
         pass
 
 
-def create_runtime_server(*, database: Path, host: str, port: int):
+def create_runtime_server(
+    *, database: Path, host: str, port: int, auth_config: Path = DEFAULT_AUTH_CONFIG
+):
     """Tworzy serwer read-only po bezpiecznej inicjalizacji SQLite."""
 
     initialize_event_store(database)
@@ -43,13 +48,14 @@ def create_runtime_server(*, database: Path, host: str, port: int):
         host,
         port,
         lambda: EventStore(database, read_only=True),
+        authenticator=WebAuthenticator.from_config(auth_config),
     )
 
 
-def run(*, database: Path, host: str, port: int) -> None:
+def run(*, database: Path, host: str, port: int, auth_config: Path) -> None:
     """Uruchamia jedynie read-only HTTP nad Event Store."""
 
-    server = create_runtime_server(database=database, host=host, port=port)
+    server = create_runtime_server(database=database, host=host, port=port, auth_config=auth_config)
 
     def stop_server(_signal_number: int, _frame: object) -> None:
         raise KeyboardInterrupt
@@ -68,7 +74,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
     arguments = build_parser().parse_args(arguments)
     if not 1 <= arguments.port <= 65535:
         raise SystemExit("Port musi należeć do zakresu 1..65535")
-    run(database=arguments.database, host=arguments.host, port=arguments.port)
+    run(database=arguments.database, host=arguments.host, port=arguments.port, auth_config=arguments.auth_config)
 
 
 if __name__ == "__main__":

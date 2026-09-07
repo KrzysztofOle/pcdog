@@ -1,9 +1,11 @@
-"""Minimalne, read-only HTTP API PcDog oparte na standard library."""
+"""HTTP API PcDog: odczyt panelu i lokalne uwierzytelnienie."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hmac
 import json
 from pathlib import Path
 from typing import Protocol
@@ -12,18 +14,20 @@ from urllib.parse import parse_qs, urlparse
 from .event_store import EventStore, EventStoreError, StoredEvent
 from .models import PcDogState, StateSnapshot
 from .network_status import read_network_status
+from .system_agent_client import read_system_agent_status
+from .web_auth import (
+    AuthenticationError,
+    SESSION_COOKIE_NAME,
+    SESSION_TTL,
+    WebAuthenticator,
+)
 
 
 class HealthProvider(Protocol):
-    """Minimalny kontrakt health, rozszerzalny bez wiązania z systemd."""
-
-    def status(self) -> PcDogState:
-        """Zwraca bieżący stan zdrowia runtime."""
+    def status(self) -> PcDogState: ...
 
 
 class StaticHealthProvider:
-    """Bezpieczny provider v1, nieodczytujący systemu ani sprzętu."""
-
     def __init__(self, state: PcDogState = PcDogState.HEALTHY) -> None:
         self._state = state
 
@@ -32,6 +36,7 @@ class StaticHealthProvider:
 
 
 EventStoreFactory = Callable[[], EventStore]
+SystemAgentStatusProvider = Callable[[], dict[str, object]]
 WEB_PANEL_DIRECTORY = Path(__file__).with_name("web_panel")
 _STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
@@ -41,8 +46,6 @@ _STATIC_FILES = {
 
 
 class ApiRequestError(ValueError):
-    """Błąd wejścia klienta z bezpieczną, stabilną odpowiedzią HTTP."""
-
     def __init__(self, status: int, code: str, message: str) -> None:
         super().__init__(message)
         self.status = status
@@ -51,35 +54,30 @@ class ApiRequestError(ValueError):
 
 
 class ReadOnlyApi:
-    """Warstwa serializacji i odczytu nad Event Store.
-
-    Factory musi zwracać nowe, read-only połączenie Event Store dla każdego
-    wywołania. Dzięki temu HTTP server nie współdzieli surowego połączenia
-    SQLite między wątkami requestów.
-    """
+    """Serializacja odczytu Event Store; bez zależności od HTTP i sesji."""
 
     def __init__(
-        self,
-        event_store_factory: EventStoreFactory,
-        *,
-        health_provider: HealthProvider | None = None,
-        max_event_limit: int = 100,
+        self, event_store_factory: EventStoreFactory, *,
+        health_provider: HealthProvider | None = None, max_event_limit: int = 100,
+        system_agent_status_provider: SystemAgentStatusProvider | None = None,
     ) -> None:
         if max_event_limit < 1:
             raise ValueError("max_event_limit must be at least one")
         self._event_store_factory = event_store_factory
         self._health_provider = health_provider or StaticHealthProvider()
         self._max_event_limit = max_event_limit
+        self._system_agent_status_provider = system_agent_status_provider or read_system_agent_status
 
     def handle_get(self, path: str, query: Mapping[str, list[str]]) -> dict[str, object]:
-        """Obsługuje dozwolone endpointy bez znajomości HTTP transportu."""
-
         if path == "/api/v1/health":
             self._require_only_parameters(query, set())
             return {"status": self._health_provider.status().value}
         if path == "/api/v1/network":
             self._require_only_parameters(query, set())
             return read_network_status()
+        if path == "/api/v1/system":
+            self._require_only_parameters(query, set())
+            return self._system_agent_status_provider()
         if path == "/api/v1/state":
             self._require_only_parameters(query, set())
             return self._state_payload()
@@ -92,30 +90,14 @@ class ReadOnlyApi:
         with self._event_store_factory() as store:
             snapshot = store.read_current_state()
         if snapshot is None:
-            raise ApiRequestError(
-                404,
-                "STATE_UNAVAILABLE",
-                "Bieżący stan nie jest jeszcze dostępny",
-            )
+            raise ApiRequestError(404, "STATE_UNAVAILABLE", "Bieżący stan nie jest jeszcze dostępny")
         return self._snapshot_payload(snapshot)
 
     def _events_payload(self, query: Mapping[str, list[str]]) -> dict[str, object]:
-        limit = self._integer_parameter(
-            query,
-            "limit",
-            default=self._max_event_limit,
-            minimum=1,
-            maximum=self._max_event_limit,
-        )
-        after_id = self._integer_parameter(
-            query, "after_id", default=None, minimum=0, maximum=None
-        )
+        limit = self._integer_parameter(query, "limit", default=self._max_event_limit, minimum=1, maximum=self._max_event_limit)
+        after_id = self._integer_parameter(query, "after_id", default=None, minimum=0, maximum=None)
         with self._event_store_factory() as store:
-            events = (
-                store.read_recent_events(limit=limit)
-                if after_id is None
-                else store.read_events(after_id=after_id, limit=limit)
-            )
+            events = store.read_recent_events(limit=limit) if after_id is None else store.read_events(after_id=after_id, limit=limit)
         return {"events": [self._event_payload(event) for event in events]}
 
     @staticmethod
@@ -148,22 +130,11 @@ class ReadOnlyApi:
         return timestamp.isoformat().replace("+00:00", "Z")
 
     @staticmethod
-    def _require_only_parameters(
-        query: Mapping[str, list[str]], allowed: set[str]
-    ) -> None:
-        unexpected = set(query) - allowed
-        if unexpected:
+    def _require_only_parameters(query: Mapping[str, list[str]], allowed: set[str]) -> None:
+        if set(query) - allowed:
             raise ApiRequestError(400, "INVALID_PARAMETER", "Nieprawidłowy parametr")
 
-    def _integer_parameter(
-        self,
-        query: Mapping[str, list[str]],
-        name: str,
-        *,
-        default: int | None,
-        minimum: int,
-        maximum: int | None,
-    ) -> int | None:
+    def _integer_parameter(self, query: Mapping[str, list[str]], name: str, *, default: int | None, minimum: int, maximum: int | None) -> int | None:
         values = query.get(name)
         if values is None:
             return default
@@ -172,9 +143,7 @@ class ReadOnlyApi:
         try:
             value = int(values[0])
         except ValueError as error:
-            raise ApiRequestError(
-                400, "INVALID_PARAMETER", "Nieprawidłowy parametr"
-            ) from error
+            raise ApiRequestError(400, "INVALID_PARAMETER", "Nieprawidłowy parametr") from error
         if value < minimum:
             raise ApiRequestError(400, "INVALID_PARAMETER", "Nieprawidłowy parametr")
         if maximum is not None and value > maximum:
@@ -182,20 +151,29 @@ class ReadOnlyApi:
         return value
 
 
-class _ReadOnlyRequestHandler(BaseHTTPRequestHandler):
-    """Transport HTTP bez endpointów mutujących."""
-
+class _RequestHandler(BaseHTTPRequestHandler):
     api: ReadOnlyApi
+    auth: WebAuthenticator
 
-    def do_GET(self) -> None:  # noqa: N802 - nazwa wymagana przez BaseHTTPRequestHandler
+    def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         static_file = _STATIC_FILES.get(parsed.path)
         if static_file is not None and not parsed.query:
             self._write_static(*static_file)
             return
         try:
+            if parsed.path == "/api/v1/session":
+                if parsed.query:
+                    raise ApiRequestError(400, "INVALID_PARAMETER", "Nieprawidłowy parametr")
+                session = self.auth.session(self._session_token())
+                self._write_json(200, {"authenticated": True, "csrf_token": session.csrf_token})
+                return
+            if parsed.path != "/api/v1/health":
+                self.auth.session(self._session_token())
             payload = self.api.handle_get(parsed.path, parse_qs(parsed.query, True))
             self._write_json(200, payload)
+        except AuthenticationError as error:
+            self._write_error(error.status, error.code, error.message)
         except ApiRequestError as error:
             self._write_error(error.status, error.code, error.message)
         except EventStoreError:
@@ -204,7 +182,40 @@ class _ReadOnlyRequestHandler(BaseHTTPRequestHandler):
             self._write_error(500, "INTERNAL_ERROR", "Wewnętrzny błąd serwera")
 
     def do_POST(self) -> None:  # noqa: N802
-        self._method_not_allowed()
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/v1/session" or parsed.query:
+            self._method_not_allowed()
+            return
+        try:
+            payload = self._json_body()
+            if set(payload) != {"password"} or not isinstance(payload["password"], str):
+                raise ApiRequestError(400, "INVALID_REQUEST", "Nieprawidłowe dane logowania")
+            session = self.auth.login(payload["password"], self.client_address[0])
+            self._write_json(200, {"authenticated": True, "csrf_token": session.csrf_token}, cookie=self._session_cookie(session.token))
+        except AuthenticationError as error:
+            self._write_error(error.status, error.code, error.message)
+        except ApiRequestError as error:
+            self._write_error(error.status, error.code, error.message)
+        except Exception:
+            self._write_error(500, "INTERNAL_ERROR", "Wewnętrzny błąd serwera")
+        except Exception:
+            self._write_error(500, "INTERNAL_ERROR", "Wewnętrzny błąd serwera")
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/v1/session" or parsed.query:
+            self._method_not_allowed()
+            return
+        try:
+            self._require_same_origin()
+            token = self._session_token()
+            self.auth.require_write(token, self.headers.get("X-PcDog-CSRF"))
+            self.auth.logout(token)
+            self._write_json(200, {"authenticated": False}, cookie=self._expired_session_cookie())
+        except AuthenticationError as error:
+            self._write_error(error.status, error.code, error.message)
+        except ApiRequestError as error:
+            self._write_error(error.status, error.code, error.message)
 
     def do_PUT(self) -> None:  # noqa: N802
         self._method_not_allowed()
@@ -212,31 +223,66 @@ class _ReadOnlyRequestHandler(BaseHTTPRequestHandler):
     def do_PATCH(self) -> None:  # noqa: N802
         self._method_not_allowed()
 
-    def do_DELETE(self) -> None:  # noqa: N802
-        self._method_not_allowed()
-
     def do_HEAD(self) -> None:  # noqa: N802
         self._method_not_allowed()
 
+    def _json_body(self) -> dict[str, object]:
+        if self.headers.get("Content-Type") != "application/json":
+            raise ApiRequestError(415, "UNSUPPORTED_MEDIA_TYPE", "Wymagany jest JSON")
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError as error:
+            raise ApiRequestError(400, "INVALID_REQUEST", "Nieprawidłowe dane żądania") from error
+        if not 1 <= length <= 4096:
+            raise ApiRequestError(400, "INVALID_REQUEST", "Nieprawidłowe dane żądania")
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ApiRequestError(400, "INVALID_REQUEST", "Nieprawidłowe dane żądania") from error
+        if not isinstance(payload, dict):
+            raise ApiRequestError(400, "INVALID_REQUEST", "Nieprawidłowe dane żądania")
+        return payload
+
+    def _session_token(self) -> str | None:
+        try:
+            cookie = SimpleCookie(self.headers.get("Cookie"))
+            morsel = cookie.get(SESSION_COOKIE_NAME)
+            return None if morsel is None else morsel.value
+        except (AttributeError, TypeError):
+            return None
+
+    def _require_same_origin(self) -> None:
+        host = self.headers.get("Host")
+        origin = self.headers.get("Origin")
+        if not host or not origin or not hmac.compare_digest(origin, "http://" + host):
+            raise ApiRequestError(403, "ORIGIN_INVALID", "Nieprawidłowe pochodzenie żądania")
+
+    @staticmethod
+    def _session_cookie(token: str) -> str:
+        return f"{SESSION_COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={int(SESSION_TTL.total_seconds())}"
+
+    @staticmethod
+    def _expired_session_cookie() -> str:
+        return f"{SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+
     def _method_not_allowed(self) -> None:
-        self._write_error(405, "METHOD_NOT_ALLOWED", "API obsługuje tylko metodę GET")
+        self._write_error(405, "METHOD_NOT_ALLOWED", "Endpoint nie obsługuje tej metody")
 
     def _write_error(self, status: int, code: str, message: str) -> None:
         self._write_json(status, {"error": {"code": code, "message": message}})
 
-    def _write_json(self, status: int, payload: dict[str, object]) -> None:
-        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
-            "utf-8"
-        )
+    def _write_json(self, status: int, payload: dict[str, object], *, cookie: str | None = None) -> None:
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
         self.end_headers()
         self.wfile.write(body)
 
     def _write_static(self, filename: str, content_type: str) -> None:
-        """Zwraca wyłącznie jawnie dozwolone, lokalne zasoby Web Panelu."""
-
         try:
             body = (WEB_PANEL_DIRECTORY / filename).read_bytes()
         except OSError:
@@ -250,7 +296,7 @@ class _ReadOnlyRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, _format: str, *_args: object) -> None:
-        """Testowy/local server nie zapisuje requestów do stderr."""
+        pass
 
 
 class PcDogApiServer(ThreadingHTTPServer):
@@ -259,19 +305,17 @@ class PcDogApiServer(ThreadingHTTPServer):
 
 
 def create_server(
-    host: str,
-    port: int,
-    event_store_factory: EventStoreFactory,
-    *,
-    health_provider: HealthProvider | None = None,
-    max_event_limit: int = 100,
+    host: str, port: int, event_store_factory: EventStoreFactory, *,
+    health_provider: HealthProvider | None = None, max_event_limit: int = 100,
+    authenticator: WebAuthenticator | None = None,
+    system_agent_status_provider: SystemAgentStatusProvider | None = None,
 ) -> PcDogApiServer:
-    """Tworzy serwer z konfigurowalnym bindem, ale go nie uruchamia."""
-
     api = ReadOnlyApi(
-        event_store_factory,
-        health_provider=health_provider,
-        max_event_limit=max_event_limit,
+        event_store_factory, health_provider=health_provider, max_event_limit=max_event_limit,
+        system_agent_status_provider=system_agent_status_provider,
     )
-    handler = type("PcDogReadOnlyRequestHandler", (_ReadOnlyRequestHandler,), {"api": api})
+    handler = type("PcDogRequestHandler", (_RequestHandler,), {
+        "api": api,
+        "auth": authenticator or WebAuthenticator(None),
+    })
     return PcDogApiServer((host, port), handler)

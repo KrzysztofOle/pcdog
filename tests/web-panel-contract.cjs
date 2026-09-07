@@ -10,6 +10,7 @@ class Element {
   removeAttribute(key) { delete this.attributes[key]; }
   getAttribute(key) { return this.attributes[key]; }
   focus() { this.focused = true; }
+  addEventListener() {}
 }
 const views = ["status", "history", "network", "settings"].map(view => {
   const element = new Element(); element.dataset = { view }; return element;
@@ -32,6 +33,7 @@ const context = vm.createContext({
   fetch: async () => { throw new Error("offline"); },
 });
 vm.runInContext(fs.readFileSync(require("node:path").join(__dirname, "../pcdog_runtime/web_panel/pcdog-panel.js"), "utf8"), context);
+context.selectView();
 assert.equal(views[1].hidden, false);
 assert.equal(links[1].attributes["aria-current"], "page");
 window.location.hash = "#network";
@@ -54,4 +56,4 @@ context.renderNetwork({ status: "UNAVAILABLE", interfaces: [] });
 assert.match(document.getElementById("network-summary").textContent, /niedostępne/);
 context.renderUnavailableState("STATE_UNAVAILABLE");
 assert.equal(document.getElementById("pc-state").textContent, "UNKNOWN");
-console.log("PASS: routes, focus, cards, empty/error states, safe text rendering");
+console.log("PASS: login shell, routes, focus, cards, empty/error states, safe text rendering");

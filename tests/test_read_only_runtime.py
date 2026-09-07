@@ -19,6 +19,7 @@ class ReadOnlyRuntimeTests(unittest.TestCase):
         self.assertEqual(arguments.host, "0.0.0.0")
         self.assertEqual(arguments.port, 8080)
         self.assertEqual(arguments.database, Path("/var/lib/pcdog-runtime/pcdog.sqlite3"))
+        self.assertEqual(arguments.auth_config, Path("/etc/pcdog/web-auth.json"))
 
     def test_initialization_creates_readable_event_store(self) -> None:
         with TemporaryDirectory() as directory:
@@ -43,7 +44,7 @@ class ReadOnlyRuntimeTests(unittest.TestCase):
                 for path, expected_status in (
                     ("/api/v1/health", 200),
                     ("/", 200),
-                    ("/api/v1/state", 404),
+                    ("/api/v1/state", 503),
                 ):
                     connection.request("GET", path)
                     response = connection.getresponse()

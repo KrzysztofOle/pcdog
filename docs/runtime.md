@@ -1,8 +1,9 @@
 # Runtime PcDog i usługa systemd
 
-Instalator runtime instaluje `pcdog.service` jako read-only Web API i Web Panel.
-Usługa nie używa GPIO i nie steruje komputerem. Udostępnia wyłącznie odczyt
-Event Store przez HTTP; nie zawiera POWER, RESET ani Control API.
+Instalator runtime instaluje `pcdog.service` jako Web API i Web Panel oraz
+`pcdog-system-agent.service` jako oddzielony agent systemowy. Panel nie używa
+GPIO i nie steruje komputerem. Udostępnia wyłącznie odczyt Event Store przez
+HTTP; nie zawiera POWER, RESET ani Control API.
 
 ## Czysty model domenowy i State Engine
 
@@ -29,30 +30,58 @@ Kod nie narzuca ścieżki pliku; docelową lokalizacją produkcyjną pozostaje
 `/var/lib/pcdog`. W tym etapie nie zmieniono jednak systemd ani uprawnień, nie
 zapisano produkcyjnej bazy na PcDog1 i nadal nie istnieje adapter GPIO.
 
-## Read-only Web API v1
+## Web API v1
 
-Pakiet `pcdog_runtime.web_api` udostępnia serwer standard library z wyłącznie
-endpointami `GET`:
+Pakiet `pcdog_runtime.web_api` udostępnia odczytowe endpointy danych:
 
 - `/api/v1/health` zwraca np. `{ "status": "HEALTHY" }`;
 - `/api/v1/state` zwraca snapshot; przy braku snapshotu zwraca stabilne `404`
   z kodem `STATE_UNAVAILABLE`, nigdy fałszywe `OFF`;
 - `/api/v1/events?limit=50&after_id=123` zwraca eventy rosnąco po ID.
+- `/api/v1/system` zwraca wyłącznie gotowość oddzielnego system-agenta.
 
 Odpowiedzi są JSON UTF-8, enumy są stringami, a timestampy mają sufiks `Z`.
-Limit eventów ma konfigurowalne maksimum. Nie istnieją endpointy POWER, RESET
-ani Control API; metody inne niż GET zwracają `405`. Testy wiążą serwer tylko z
-loopback i portem efemerycznym. Nie ustalono jeszcze produkcyjnego bindu,
-uwierzytelnienia produkcyjnego; API nie steruje sprzętem ani GPIO.
+Limit eventów ma konfigurowalne maksimum. Dane poza health wymagają sesji
+zalogowanego administratora. `POST /api/v1/session` i
+`DELETE /api/v1/session` służą wyłącznie do logowania i wylogowania.
+Nie istnieją endpointy POWER, RESET ani Control API. Testy wiążą serwer tylko
+z loopback i portem efemerycznym; API nie steruje sprzętem ani GPIO.
 
-## Web Panel obserwacyjny — etap 1
+## Web Panel obserwacyjny — etapy 1–2
+
+Przed odczytaniem stanu, historii i sieci użytkownik musi zalogować się
+lokalnym hasłem administratora. Endpoint `GET /api/v1/health` pozostaje
+niechroniony wyłącznie dla istniejącego health check usługi; nie zawiera danych
+PC, zdarzeń, interfejsów ani konfiguracji sieci.
+
+Hasło ustawia się na Raspberry Pi po instalacji, poza repozytorium:
+
+```bash
+sudo /opt/pcdog/bin/pcdog-web-auth set-password
+sudo systemctl restart pcdog
+```
+
+Narzędzie pyta o hasło interaktywnie, wymaga co najmniej 12 znaków i zapisuje
+wyłącznie rekord `scrypt` w `/etc/pcdog/web-auth.json` o uprawnieniach
+`root:pcdog 0640`. Nie dodawaj pliku do Git ani nie przekazuj hasła w
+argumentach polecenia. Brak konfiguracji blokuje panel kodem
+`AUTH_NOT_CONFIGURED`, ale nie blokuje health check.
+
+Po poprawnym logowaniu serwer tworzy losową sesję pamięciową ważną 30 minut.
+Cookie ma `HttpOnly`, `SameSite=Strict` i ograniczenie do ścieżki `/`;
+restart usługi unieważnia wszystkie sesje. Wylogowanie wymaga tokenu CSRF i
+zgodnego nagłówka `Origin`. Pięć nieudanych prób z jednego adresu w ciągu
+10 minut czasowo blokuje kolejne logowanie z tego adresu.
+W obecnym HTTP nie ma flagi `Secure`: panel jest przeznaczony wyłącznie do
+zaufanej sieci prywatnej/ZeroTier i nie może być wystawiony do Internetu.
 
 Panel ma cztery widoki z adresami `#status`, `#history`, `#network`
 i `#settings`. Na telefonie nawigacja znajduje się u dołu ekranu; historia
 to karty ostatnich 25 zdarzeń, od najnowszego, bez przewijania poziomego.
 Nawigacja obsługuje historię przeglądarki, klawiaturę i oznaczenie bieżącej strony.
-Ustawienia pokazują wyłącznie informacje o trybie odczytowym.
-Nie dodano logowania, restartu, wyłączania, zmiany Wi-Fi ani sterowania PC.
+Ustawienia pokazują także gotowość oddzielnego system-agenta. W etapie 3 agent
+obsługuje wyłącznie lokalne żądanie `status`; operacje zasilania są oznaczone
+jako wyłączone. Nie dodano restartu, wyłączania, zmiany Wi-Fi ani sterowania PC.
 
 `GET /api/v1/network` odczytuje interfejsy, stan, nazwę profilu i adresy IP
 przez ograniczone czasem (2 s) `nmcli device show`. Nie skanuje sieci,
@@ -60,15 +89,16 @@ nie czyta sekretów ani nie modyfikuje profili. Brak nmcli, odmowa dostępu
 lub timeout daje `UNAVAILABLE`, a nie informację o rozłączeniu.
 Nazwa profilu nie jest traktowana jako SSID. Nie są jeszcze raportowane
 siła sygnału, uptime ani potwierdzony stan połączenia ZeroTier.
-Endpoint nie zmienia uprawnień usługi. Status sieci jest dostępny na tych
-samych interfejsach HTTP co dotychczasowy panel, bez uwierzytelnienia;
-panel nie powinien być wystawiany do publicznego Internetu.
+Endpoint nie zmienia uprawnień usługi i, podobnie jak pozostałe dane panelu,
+wymaga zalogowanej sesji.
 
 Ten sam testowalny serwer HTTP udostępnia minimalny panel statyczny pod `GET /`
 oraz jego lokalne zasoby pod `/static/pcdog-panel.css` i
 `/static/pcdog-panel.js`. Panel nie wymaga Node.js, procesu build, CDN ani
 zewnętrznej sieci. Jest wyłącznie klientem `GET /api/v1/health`,
-`GET /api/v1/state`, `GET /api/v1/network` i `GET /api/v1/events?limit=N`; nie ma kontrolek administracyjnych ani
+`GET /api/v1/session`, `GET /api/v1/state`, `GET /api/v1/network`, `GET /api/v1/system` i `GET /api/v1/events?limit=N`;
+logowanie używa `POST /api/v1/session`, a wylogowanie `DELETE /api/v1/session`.
+Nie ma kontrolek administracyjnych ani
 endpointów POWER, RESET czy Control API.
 
 Domyślnie panel odświeża dane co 5 sekund (stała `pollingIntervalMs` w pliku
@@ -95,6 +125,14 @@ jedyną ścieżką zapisu usługi; `PrivateDevices=yes` i pozostały hardening
 pozostają aktywne. Do wdrożenia samego runtime należy używać
 `sudo ./scripts/install-runtime.sh`, a nie pełnego bootstrapu, aby nie dotykać
 niepowiązanych komponentów systemowych.
+
+`pcdog-system-agent.service` działa jako `root:pcdog`, ale w tym etapie nie
+uruchamia żadnych poleceń systemowych. Jego socket
+`/run/pcdog-system-agent/agent.sock` ma grupowy dostęp wyłącznie dla procesu
+`pcdog` i przyjmuje krótki, zamknięty protokół JSON. Jedyną dozwoloną operacją
+jest `status`; próby restartu i wyłączenia są odrzucane. Jest to fundament do
+późniejszego, osobno zatwierdzonego projektu kontroli zasilania, a nie możliwość
+wykonania tych akcji.
 
 ## Model uprawnień
 
