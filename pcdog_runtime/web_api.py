@@ -14,6 +14,8 @@ from urllib.parse import parse_qs, urlparse
 from .event_store import EventStore, EventStoreError, StoredEvent
 from .models import PcDogState, StateSnapshot
 from .network_status import read_network_status
+from .network_agent import NetworkAgentError, validate_bssid, validate_password, validate_ssid
+from .network_agent_client import connection_status, connect_wifi, list_wifi
 from .system_agent_client import read_system_agent_status
 from .web_auth import (
     AuthenticationError,
@@ -37,6 +39,8 @@ class StaticHealthProvider:
 
 EventStoreFactory = Callable[[], EventStore]
 SystemAgentStatusProvider = Callable[[], dict[str, object]]
+NetworkAgentProvider = Callable[[], dict[str, object]]
+NetworkAgentConnect = Callable[[str, str, str | None], dict[str, object]]
 WEB_PANEL_DIRECTORY = Path(__file__).with_name("web_panel")
 _STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
@@ -60,6 +64,9 @@ class ReadOnlyApi:
         self, event_store_factory: EventStoreFactory, *,
         health_provider: HealthProvider | None = None, max_event_limit: int = 100,
         system_agent_status_provider: SystemAgentStatusProvider | None = None,
+        wifi_list_provider: NetworkAgentProvider | None = None,
+        wifi_status_provider: NetworkAgentProvider | None = None,
+        wifi_connect: NetworkAgentConnect | None = None,
     ) -> None:
         if max_event_limit < 1:
             raise ValueError("max_event_limit must be at least one")
@@ -67,6 +74,9 @@ class ReadOnlyApi:
         self._health_provider = health_provider or StaticHealthProvider()
         self._max_event_limit = max_event_limit
         self._system_agent_status_provider = system_agent_status_provider or read_system_agent_status
+        self._wifi_list_provider = wifi_list_provider or list_wifi
+        self._wifi_status_provider = wifi_status_provider or connection_status
+        self._wifi_connect = wifi_connect or connect_wifi
 
     def handle_get(self, path: str, query: Mapping[str, list[str]]) -> dict[str, object]:
         if path == "/api/v1/health":
@@ -78,6 +88,12 @@ class ReadOnlyApi:
         if path == "/api/v1/system":
             self._require_only_parameters(query, set())
             return self._system_agent_status_provider()
+        if path == "/api/v1/wifi":
+            self._require_only_parameters(query, set())
+            return self._wifi_list_provider()
+        if path == "/api/v1/wifi/connection":
+            self._require_only_parameters(query, set())
+            return self._wifi_status_provider()
         if path == "/api/v1/state":
             self._require_only_parameters(query, set())
             return self._state_payload()
@@ -85,6 +101,25 @@ class ReadOnlyApi:
             self._require_only_parameters(query, {"limit", "after_id"})
             return self._events_payload(query)
         raise ApiRequestError(404, "NOT_FOUND", "Endpoint nie istnieje")
+
+    def connect_wifi(self, payload: dict[str, object]) -> dict[str, object]:
+        if set(payload) not in ({"ssid", "password"}, {"ssid", "bssid", "password"}):
+            raise ApiRequestError(400, "INVALID_WIFI_REQUEST", "Nieprawidłowe dane Wi-Fi")
+        try:
+            ssid = validate_ssid(payload.get("ssid"))
+            bssid = validate_bssid(payload.get("bssid"))
+            password = validate_password(payload.get("password"))
+        except NetworkAgentError as error:
+            raise ApiRequestError(400, error.code, "Nieprawidłowe dane Wi-Fi") from error
+        result = self._wifi_connect(ssid, password, bssid)
+        status = result.get("status")
+        if status == "BUSY":
+            raise ApiRequestError(409, "WIFI_CHANGE_BUSY", "Zmiana Wi-Fi jest już w toku")
+        if status in {"UNAVAILABLE", "NETWORK_MANAGER_UNAVAILABLE"}:
+            raise ApiRequestError(503, "NETWORK_AGENT_UNAVAILABLE", "Agent sieciowy jest niedostępny")
+        if status != "STARTED":
+            raise ApiRequestError(400, "WIFI_CHANGE_REJECTED", "Nie można rozpocząć zmiany Wi-Fi")
+        return result
 
     def _state_payload(self) -> dict[str, object]:
         with self._event_store_factory() as store:
@@ -183,15 +218,23 @@ class _RequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
-        if parsed.path != "/api/v1/session" or parsed.query:
+        if parsed.query or parsed.path not in {"/api/v1/session", "/api/v1/wifi/connection"}:
             self._method_not_allowed()
             return
         try:
             payload = self._json_body()
-            if set(payload) != {"password"} or not isinstance(payload["password"], str):
-                raise ApiRequestError(400, "INVALID_REQUEST", "Nieprawidłowe dane logowania")
-            session = self.auth.login(payload["password"], self.client_address[0])
-            self._write_json(200, {"authenticated": True, "csrf_token": session.csrf_token}, cookie=self._session_cookie(session.token))
+            if parsed.path == "/api/v1/session":
+                if set(payload) != {"password"} or not isinstance(payload["password"], str):
+                    raise ApiRequestError(400, "INVALID_REQUEST", "Nieprawidłowe dane logowania")
+                session = self.auth.login(payload["password"], self.client_address[0])
+                self._write_json(200, {"authenticated": True, "csrf_token": session.csrf_token}, cookie=self._session_cookie(session.token))
+                return
+            if parsed.path == "/api/v1/wifi/connection":
+                self._require_same_origin()
+                self.auth.require_write(self._session_token(), self.headers.get("X-PcDog-CSRF"))
+                self._write_json(202, self.api.connect_wifi(payload))
+                return
+            self._method_not_allowed()
         except AuthenticationError as error:
             self._write_error(error.status, error.code, error.message)
         except ApiRequestError as error:
@@ -309,10 +352,16 @@ def create_server(
     health_provider: HealthProvider | None = None, max_event_limit: int = 100,
     authenticator: WebAuthenticator | None = None,
     system_agent_status_provider: SystemAgentStatusProvider | None = None,
+    wifi_list_provider: NetworkAgentProvider | None = None,
+    wifi_status_provider: NetworkAgentProvider | None = None,
+    wifi_connect: NetworkAgentConnect | None = None,
 ) -> PcDogApiServer:
     api = ReadOnlyApi(
         event_store_factory, health_provider=health_provider, max_event_limit=max_event_limit,
         system_agent_status_provider=system_agent_status_provider,
+        wifi_list_provider=wifi_list_provider,
+        wifi_status_provider=wifi_status_provider,
+        wifi_connect=wifi_connect,
     )
     handler = type("PcDogRequestHandler", (_RequestHandler,), {
         "api": api,

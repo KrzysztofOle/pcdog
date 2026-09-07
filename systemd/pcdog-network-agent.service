@@ -1,22 +1,21 @@
 [Unit]
-Description=PcDog Web API and Web Panel
+Description=PcDog restricted NetworkManager Wi-Fi agent
 Documentation=https://github.com/KrzysztofOle/pcdog
-After=network.target pcdog-system-agent.service pcdog-network-agent.service
-Wants=pcdog-system-agent.service pcdog-network-agent.service
+After=NetworkManager.service
+Wants=NetworkManager.service
 
 [Service]
 Type=simple
-User=pcdog
+User=root
 Group=pcdog
-WorkingDirectory=/opt/pcdog
-ExecStart=/opt/pcdog/bin/pcdog-runtime
+ExecStart=/opt/pcdog/bin/pcdog-network-agent
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=10s
 KillSignal=SIGTERM
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=pcdog
+SyslogIdentifier=pcdog-network-agent
 NoNewPrivileges=yes
 PrivateDevices=yes
 PrivateTmp=yes
@@ -25,8 +24,8 @@ ProtectHome=yes
 ProtectKernelModules=yes
 ProtectKernelTunables=yes
 ProtectSystem=strict
-StateDirectory=pcdog-runtime
-StateDirectoryMode=0750
+RuntimeDirectory=pcdog-network-agent
+RuntimeDirectoryMode=0750
 RestrictSUIDSGID=yes
 LockPersonality=yes
 CapabilityBoundingSet=

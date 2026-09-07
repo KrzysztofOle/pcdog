@@ -55,7 +55,19 @@
       <section data-view="network" aria-label="Sieć" hidden>
         <p class="detail">Bieżące dane NetworkManager. Nazwa profilu połączenia nie musi być nazwą sieci Wi-Fi (SSID).</p>
         <div id="network-list" class="status-grid"><p class="card">Oczekiwanie na dane…</p></div>
-        <p class="notice">Zmiana sieci i podanie hasła nie są jeszcze dostępne.</p>
+        <article class="card wifi-change" aria-labelledby="wifi-change-title">
+          <h2 id="wifi-change-title">Zmień sieć Wi-Fi</h2>
+          <p class="notice">Przełączenie może przerwać połączenie z panelem. Po zmianie połącz telefon lub komputer z nową siecią i otwórz panel ponownie. USB pozostaje kanałem recovery PcDog.</p>
+          <button id="wifi-scan" type="button">Wyszukaj sieci Wi-Fi</button>
+          <form id="wifi-connect-form" hidden>
+            <label for="wifi-network">Dostępna sieć</label>
+            <select id="wifi-network" name="wifi-network" required></select>
+            <label for="wifi-password">Hasło Wi-Fi</label>
+            <div class="password-row"><input id="wifi-password" name="wifi-password" type="password" autocomplete="current-password" required minlength="8" maxlength="63"><button id="wifi-password-toggle" type="button" class="quiet-button" aria-pressed="false">Pokaż</button></div>
+            <button id="wifi-connect" type="submit">Rozpocznij zmianę Wi-Fi</button>
+          </form>
+          <p id="wifi-status" class="detail" role="status" aria-live="polite">Skan nie został jeszcze uruchomiony.</p>
+        </article>
       </section>
       <section data-view="settings" aria-label="Ustawienia" hidden>
         <article class="card"><h2>Panel obserwacyjny</h2><dl class="status-list">

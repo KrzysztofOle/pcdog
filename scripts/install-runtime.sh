@@ -15,20 +15,25 @@ readonly RUNTIME_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-runtime"
 readonly HEALTH_CHECK_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-healthcheck"
 readonly WEB_AUTH_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-web-auth"
 readonly SYSTEM_AGENT_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-system-agent"
+readonly NETWORK_AGENT_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-network-agent"
 readonly RUNTIME_LIBRARY_DIRECTORY="$RUNTIME_DIRECTORY/lib"
 readonly RUNTIME_PACKAGE_DIRECTORY="$RUNTIME_LIBRARY_DIRECTORY/pcdog_runtime"
 readonly RUNTIME_WEB_PANEL_DIRECTORY="$RUNTIME_PACKAGE_DIRECTORY/web_panel"
 readonly RUNTIME_DATA_DIRECTORY='/var/lib/pcdog-runtime'
 readonly SERVICE_NAME='pcdog.service'
 readonly SYSTEM_AGENT_SERVICE_NAME='pcdog-system-agent.service'
+readonly NETWORK_AGENT_SERVICE_NAME='pcdog-network-agent.service'
 readonly SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
 readonly SYSTEM_AGENT_SERVICE_PATH="/etc/systemd/system/$SYSTEM_AGENT_SERVICE_NAME"
+readonly NETWORK_AGENT_SERVICE_PATH="/etc/systemd/system/$NETWORK_AGENT_SERVICE_NAME"
 readonly RUNTIME_SOURCE="$project_dir/runtime/pcdog-runtime.sh"
 readonly HEALTH_CHECK_SOURCE="$project_dir/runtime/pcdog-healthcheck.sh"
 readonly WEB_AUTH_SOURCE="$project_dir/runtime/pcdog-web-auth.sh"
 readonly SYSTEM_AGENT_SOURCE="$project_dir/runtime/pcdog-system-agent.sh"
+readonly NETWORK_AGENT_SOURCE="$project_dir/runtime/pcdog-network-agent.sh"
 readonly SERVICE_SOURCE="$project_dir/systemd/$SERVICE_NAME"
 readonly SYSTEM_AGENT_SERVICE_SOURCE="$project_dir/systemd/$SYSTEM_AGENT_SERVICE_NAME"
+readonly NETWORK_AGENT_SERVICE_SOURCE="$project_dir/systemd/$NETWORK_AGENT_SERVICE_NAME"
 readonly PYTHON_PACKAGE_SOURCE="$project_dir/pcdog_runtime"
 readonly -a PYTHON_PACKAGE_FILES=(
   '__init__.py'
@@ -37,6 +42,8 @@ readonly -a PYTHON_PACKAGE_FILES=(
   'inputs.py'
   'models.py'
   'network_status.py'
+  'network_agent.py'
+  'network_agent_client.py'
   'read_only_runtime.py'
   'state_engine.py'
   'system_agent.py'
@@ -108,8 +115,10 @@ runtime_layout_is_correct() {
   file_matches "$HEALTH_CHECK_SOURCE" "$HEALTH_CHECK_BINARY" 755 || return 1
   file_matches "$WEB_AUTH_SOURCE" "$WEB_AUTH_BINARY" 755 || return 1
   file_matches "$SYSTEM_AGENT_SOURCE" "$SYSTEM_AGENT_BINARY" 755 || return 1
+  file_matches "$NETWORK_AGENT_SOURCE" "$NETWORK_AGENT_BINARY" 755 || return 1
   file_matches "$SERVICE_SOURCE" "$SERVICE_PATH" 644 || return 1
   file_matches "$SYSTEM_AGENT_SERVICE_SOURCE" "$SYSTEM_AGENT_SERVICE_PATH" 644 || return 1
+  file_matches "$NETWORK_AGENT_SERVICE_SOURCE" "$NETWORK_AGENT_SERVICE_PATH" 644 || return 1
   for relative_path in "${PYTHON_PACKAGE_FILES[@]}"; do
     file_matches "$PYTHON_PACKAGE_SOURCE/$relative_path" "$RUNTIME_PACKAGE_DIRECTORY/$relative_path" 644 || return 1
   done
@@ -127,6 +136,8 @@ if "$check_only"; then
   systemctl is-active --quiet "$SERVICE_NAME" || die "Usługa ${SERVICE_NAME} nie jest aktywna."
   systemctl is-enabled --quiet "$SYSTEM_AGENT_SERVICE_NAME" || die "Usługa ${SYSTEM_AGENT_SERVICE_NAME} nie jest włączona."
   systemctl is-active --quiet "$SYSTEM_AGENT_SERVICE_NAME" || die "Usługa ${SYSTEM_AGENT_SERVICE_NAME} nie jest aktywna."
+  systemctl is-enabled --quiet "$NETWORK_AGENT_SERVICE_NAME" || die "Usługa ${NETWORK_AGENT_SERVICE_NAME} nie jest włączona."
+  systemctl is-active --quiet "$NETWORK_AGENT_SERVICE_NAME" || die "Usługa ${NETWORK_AGENT_SERVICE_NAME} nie jest aktywna."
   "$script_dir/health-check.sh"
   log_success 'Runtime PcDog i usługa systemd są poprawnie zainstalowane.'
   exit 0
@@ -201,6 +212,9 @@ fi
 if install_if_changed "$SYSTEM_AGENT_SOURCE" "$SYSTEM_AGENT_BINARY" 755; then
   runtime_changed=true
 fi
+if install_if_changed "$NETWORK_AGENT_SOURCE" "$NETWORK_AGENT_BINARY" 755; then
+  runtime_changed=true
+fi
 for relative_path in "${PYTHON_PACKAGE_FILES[@]}"; do
   if install_if_changed "$PYTHON_PACKAGE_SOURCE/$relative_path" "$RUNTIME_PACKAGE_DIRECTORY/$relative_path" 644; then
     runtime_changed=true
@@ -210,6 +224,9 @@ if install_if_changed "$SERVICE_SOURCE" "$SERVICE_PATH" 644; then
   unit_changed=true
 fi
 if install_if_changed "$SYSTEM_AGENT_SERVICE_SOURCE" "$SYSTEM_AGENT_SERVICE_PATH" 644; then
+  unit_changed=true
+fi
+if install_if_changed "$NETWORK_AGENT_SERVICE_SOURCE" "$NETWORK_AGENT_SERVICE_PATH" 644; then
   unit_changed=true
 fi
 
@@ -227,6 +244,10 @@ if ! systemctl is-enabled --quiet "$SYSTEM_AGENT_SERVICE_NAME"; then
   log_info "Włączanie ${SYSTEM_AGENT_SERVICE_NAME} do autostartu."
   systemctl enable "$SYSTEM_AGENT_SERVICE_NAME"
 fi
+if ! systemctl is-enabled --quiet "$NETWORK_AGENT_SERVICE_NAME"; then
+  log_info "Włączanie ${NETWORK_AGENT_SERVICE_NAME} do autostartu."
+  systemctl enable "$NETWORK_AGENT_SERVICE_NAME"
+fi
 
 if ! systemctl is-active --quiet "$SYSTEM_AGENT_SERVICE_NAME"; then
   log_info "Uruchamianie ${SYSTEM_AGENT_SERVICE_NAME}."
@@ -234,6 +255,14 @@ if ! systemctl is-active --quiet "$SYSTEM_AGENT_SERVICE_NAME"; then
 elif "$runtime_changed" || "$unit_changed"; then
   log_info "Restart ${SYSTEM_AGENT_SERVICE_NAME} po zmianie plików runtime."
   systemctl restart "$SYSTEM_AGENT_SERVICE_NAME"
+fi
+
+if ! systemctl is-active --quiet "$NETWORK_AGENT_SERVICE_NAME"; then
+  log_info "Uruchamianie ${NETWORK_AGENT_SERVICE_NAME}."
+  systemctl start "$NETWORK_AGENT_SERVICE_NAME"
+elif "$runtime_changed" || "$unit_changed"; then
+  log_info "Restart ${NETWORK_AGENT_SERVICE_NAME} po zmianie plików runtime."
+  systemctl restart "$NETWORK_AGENT_SERVICE_NAME"
 fi
 
 if ! systemctl is-active --quiet "$SERVICE_NAME"; then

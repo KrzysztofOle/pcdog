@@ -4,6 +4,7 @@ const CONFIG = Object.freeze({ pollingIntervalMs: 5000, eventsLimit: 25, request
 const VIEWS = { status: "Status", history: "Historia", network: "Sieć", settings: "Ustawienia" };
 let csrfToken = null;
 let refreshInFlight = false;
+let scannedNetworks = [];
 
 const text = (id, value) => { document.getElementById(id).textContent = value; };
 const badgeClass = value => {
@@ -84,18 +85,43 @@ function renderSystemAgent(agent) {
   setBadge("system-agent-status", agent.status);
   text("system-agent-actions", agent.status === "READY" && agent.actions_enabled === false ? "wyłączone (etap przygotowawczy)" : "brak danych");
 }
+function wifiMessage(status) {
+  const messages = { IDLE: "Brak aktywnej zmiany Wi-Fi.", IN_PROGRESS: "Trwa próba połączenia. Panel może za chwilę przestać być dostępny.", SUCCEEDED: "Nowa sieć została potwierdzona przez NetworkManager i ma adres IP.", ROLLED_BACK: "Nie udało się połączyć; przywrócono poprzedni profil Wi-Fi.", ROLLBACK_FAILED: "Nie udało się połączyć ani przywrócić poprzedniego profilu. Użyj kanału recovery.", FAILED: "Nie udało się rozpocząć połączenia; nie było profilu do przywrócenia." };
+  return messages[status] || "Stan zmiany Wi-Fi jest niedostępny.";
+}
+function renderWifiStatus(result) { text("wifi-status", wifiMessage(result.status)); }
+function renderWifiScan(result) {
+  const form = document.getElementById("wifi-connect-form"); const select = document.getElementById("wifi-network"); select.replaceChildren();
+  scannedNetworks = result.status === "AVAILABLE" && Array.isArray(result.networks) ? result.networks : [];
+  for (const [index, network] of scannedNetworks.entries()) { const option = document.createElement("option"); option.value = String(index); option.textContent = network.ssid + " · " + network.security + " · " + network.signal + "%"; select.append(option); }
+  form.hidden = scannedNetworks.length === 0; text("wifi-status", scannedNetworks.length ? "Wybierz sieć i podaj hasło." : "Nie znaleziono dostępnych, zabezpieczonych sieci Wi-Fi.");
+}
+async function scanWifi() {
+  const button = document.getElementById("wifi-scan"); button.disabled = true; text("wifi-status", "Skanowanie Wi-Fi…");
+  try { renderWifiScan(await request("/api/v1/wifi")); } catch { text("wifi-status", "Skan Wi-Fi jest obecnie niedostępny."); } finally { button.disabled = false; }
+}
+async function startWifiConnection(event) {
+  event.preventDefault(); const index = Number(document.getElementById("wifi-network").value); const network = scannedNetworks[index]; const password = document.getElementById("wifi-password"); const submit = document.getElementById("wifi-connect");
+  if (!network) { text("wifi-status", "Najpierw wybierz sieć ze skanu."); return; }
+  submit.disabled = true; text("wifi-status", "Rozpoczynanie bezpiecznej próby połączenia…");
+  try { renderWifiStatus(await request("/api/v1/wifi/connection", { method: "POST", headers: { "Content-Type": "application/json", "X-PcDog-CSRF": csrfToken, Origin: window.location.origin }, body: JSON.stringify({ ssid: network.ssid, bssid: network.bssid, password: password.value }) })); password.value = ""; }
+  catch (error) { text("wifi-status", error.message === "WIFI_CHANGE_BUSY" ? "Inna zmiana Wi-Fi jest już w toku." : "Nie można rozpocząć zmiany Wi-Fi."); }
+  finally { submit.disabled = false; }
+}
+function toggleWifiPassword() { const input = document.getElementById("wifi-password"); const button = document.getElementById("wifi-password-toggle"); const shown = input.type === "text"; input.type = shown ? "password" : "text"; button.textContent = shown ? "Pokaż" : "Ukryj"; button.setAttribute("aria-pressed", String(!shown)); }
 async function refresh() {
   if (refreshInFlight || !csrfToken) return;
   refreshInFlight = true;
   try {
-    const [health, state, events, network, systemAgent] = await Promise.allSettled([
-      request("/api/v1/health"), request("/api/v1/state"), request("/api/v1/events?limit=" + CONFIG.eventsLimit), request("/api/v1/network"), request("/api/v1/system"),
+    const [health, state, events, network, systemAgent, wifi] = await Promise.allSettled([
+      request("/api/v1/health"), request("/api/v1/state"), request("/api/v1/events?limit=" + CONFIG.eventsLimit), request("/api/v1/network"), request("/api/v1/system"), request("/api/v1/wifi/connection"),
     ]);
     health.status === "fulfilled" ? renderHealth(health.value) : renderHealthUnavailable();
     state.status === "fulfilled" ? renderState(state.value) : renderUnavailableState(state.reason.message);
     events.status === "fulfilled" ? renderEvents(events.value.events) : renderEventsUnavailable();
     renderNetwork(network.status === "fulfilled" ? network.value : { status: "UNAVAILABLE", interfaces: [] });
     renderSystemAgent(systemAgent.status === "fulfilled" ? systemAgent.value : { status: "UNAVAILABLE" });
+    renderWifiStatus(wifi.status === "fulfilled" ? wifi.value : { status: "UNAVAILABLE" });
     if (state.status === "fulfilled") text("refresh-status", "Odświeżono: " + new Date().toLocaleTimeString());
   } finally { refreshInFlight = false; }
 }
@@ -120,6 +146,9 @@ async function logout() {
 async function initialise() {
   document.getElementById("login-form").addEventListener("submit", login);
   document.getElementById("logout-button").addEventListener("click", logout);
+  document.getElementById("wifi-scan").addEventListener("click", scanWifi);
+  document.getElementById("wifi-connect-form").addEventListener("submit", startWifiConnection);
+  document.getElementById("wifi-password-toggle").addEventListener("click", toggleWifiPassword);
   window.addEventListener("hashchange", () => selectView(true));
   try { showPanel(await request("/api/v1/session")); } catch { showLogin(); }
 }

@@ -1,9 +1,9 @@
 # Runtime PcDog i usługa systemd
 
-Instalator runtime instaluje `pcdog.service` jako Web API i Web Panel oraz
-`pcdog-system-agent.service` jako oddzielony agent systemowy. Panel nie używa
-GPIO i nie steruje komputerem. Udostępnia wyłącznie odczyt Event Store przez
-HTTP; nie zawiera POWER, RESET ani Control API.
+Instalator runtime instaluje `pcdog.service` jako Web API i Web Panel,
+`pcdog-system-agent.service` jako oddzielony agent statusowy oraz
+`pcdog-network-agent.service` jako wąsko ograniczony agent Wi-Fi. Panel nie
+używa GPIO i nie steruje komputerem; nie zawiera POWER, RESET ani Control API.
 
 ## Czysty model domenowy i State Engine
 
@@ -47,7 +47,7 @@ zalogowanego administratora. `POST /api/v1/session` i
 Nie istnieją endpointy POWER, RESET ani Control API. Testy wiążą serwer tylko
 z loopback i portem efemerycznym; API nie steruje sprzętem ani GPIO.
 
-## Web Panel obserwacyjny — etapy 1–2
+## Web Panel — etap Wi-Fi
 
 Przed odczytaniem stanu, historii i sieci użytkownik musi zalogować się
 lokalnym hasłem administratora. Endpoint `GET /api/v1/health` pozostaje
@@ -79,9 +79,9 @@ Panel ma cztery widoki z adresami `#status`, `#history`, `#network`
 i `#settings`. Na telefonie nawigacja znajduje się u dołu ekranu; historia
 to karty ostatnich 25 zdarzeń, od najnowszego, bez przewijania poziomego.
 Nawigacja obsługuje historię przeglądarki, klawiaturę i oznaczenie bieżącej strony.
-Ustawienia pokazują także gotowość oddzielnego system-agenta. W etapie 3 agent
-obsługuje wyłącznie lokalne żądanie `status`; operacje zasilania są oznaczone
-jako wyłączone. Nie dodano restartu, wyłączania, zmiany Wi-Fi ani sterowania PC.
+Ustawienia pokazują także gotowość oddzielnego system-agenta. Nadal obsługuje
+on wyłącznie lokalne żądanie `status`, a operacje zasilania są wyłączone. Nie
+dodano restartu, wyłączania ani sterowania PC.
 
 `GET /api/v1/network` odczytuje interfejsy, stan, nazwę profilu i adresy IP
 przez ograniczone czasem (2 s) `nmcli device show`. Nie skanuje sieci,
@@ -92,11 +92,36 @@ siła sygnału, uptime ani potwierdzony stan połączenia ZeroTier.
 Endpoint nie zmienia uprawnień usługi i, podobnie jak pozostałe dane panelu,
 wymaga zalogowanej sesji.
 
+Widok **Sieć** umożliwia zmianę Wi-Fi przez osobny agent. `GET /api/v1/wifi`
+zwraca skan wyłącznie zabezpieczonych sieci: SSID, BSSID, rodzaj zabezpieczeń i
+sygnał. `GET /api/v1/wifi/connection` zwraca ulotny stan ostatniej operacji,
+a `POST /api/v1/wifi/connection` przyjmuje wyłącznie SSID, opcjonalny BSSID i
+hasło w JSON body. Zmiana wymaga sesji, CSRF i zgodnego `Origin`; nie przyjmuje
+interfejsu, profilu ani dowolnych argumentów wykonawczych.
+
+Hasło Wi-Fi nie może pojawić się w URL, odpowiedzi, logach ani wyniku joba.
+Network-agent uruchamia `nmcli` bez powłoki. Tworzy kandydatowy profil wyłącznie
+w pamięci NetworkManagera (`save no`), a sekret podaje przez stdin `nmcli --ask`;
+nigdy przez argv ani plik trwały. Dopuszcza jeden aktywny job i przechowuje wynik
+tylko w pamięci, maksymalnie przez 5 minut. Oznacza to, że nowa konfiguracja nie
+przetrwa restartu Raspberry Pi — trwałe zapisywanie poświadczeń wymaga osobnego,
+świadomie zatwierdzonego etapu.
+
+Przed próbą połączenia agent zapamiętuje aktywny profil Wi-Fi. Sukces wymaga
+potwierdzenia aktywnego SSID/BSSID przez NetworkManager i adresu IPv4. Błędne
+hasło, błąd lub timeout NetworkManagera albo brak potwierdzenia uruchamiają
+próbę przywrócenia poprzedniego profilu; istniejące profile nie są usuwane.
+Telefon lub komputer może wymagać połączenia z nową siecią i ponownego otwarcia
+panelu. USB pozostaje kanałem recovery, bez założenia obsługi USB Ethernet przez
+telefon.
+
 Ten sam testowalny serwer HTTP udostępnia minimalny panel statyczny pod `GET /`
 oraz jego lokalne zasoby pod `/static/pcdog-panel.css` i
 `/static/pcdog-panel.js`. Panel nie wymaga Node.js, procesu build, CDN ani
 zewnętrznej sieci. Jest wyłącznie klientem `GET /api/v1/health`,
-`GET /api/v1/session`, `GET /api/v1/state`, `GET /api/v1/network`, `GET /api/v1/system` i `GET /api/v1/events?limit=N`;
+`GET /api/v1/session`, `GET /api/v1/state`, `GET /api/v1/network`,
+`GET /api/v1/system`, `GET /api/v1/wifi`, `GET /api/v1/wifi/connection` i
+`GET /api/v1/events?limit=N`;
 logowanie używa `POST /api/v1/session`, a wylogowanie `DELETE /api/v1/session`.
 Nie ma kontrolek administracyjnych ani
 endpointów POWER, RESET czy Control API.
@@ -108,7 +133,7 @@ Brak snapshotu (`STATE_UNAVAILABLE`) albo błąd odczytu stanu jest pokazywany j
 `UNKNOWN` / „brak danych”, nigdy jako `OFF`. Wyniki endpointów są obsługiwane
 niezależnie: niedostępna historia nie ukrywa dostępnego stanu PC.
 
-## Wdrożenie read-only na PcDog1
+## Wdrożenie runtime na PcDog1
 
 `pcdog.service` uruchamia `pcdog_runtime.read_only_runtime` pod Pythonem 3 bez
 `pip` ani zewnętrznych zależności. Produkcyjny bind IPv4 to `0.0.0.0:8080`; nie
@@ -133,6 +158,14 @@ uruchamia żadnych poleceń systemowych. Jego socket
 jest `status`; próby restartu i wyłączenia są odrzucane. Jest to fundament do
 późniejszego, osobno zatwierdzonego projektu kontroli zasilania, a nie możliwość
 wykonania tych akcji.
+
+`pcdog-network-agent.service` jest odrębnym procesem `root:pcdog`, bez GPIO i
+funkcji zasilania. Socket `/run/pcdog-network-agent/agent.sock` ma tryb `0660`
+w katalogu runtime `0750` i jest przeznaczony wyłącznie dla `pcdog`. Na Linuksie
+agent dodatkowo sprawdza UID klienta przez `SO_PEERCRED`. Zamknięty protokół JSON
+ma dokładnie `list_wifi`, `connect_wifi` i `connection_status`. Rzeczywistą
+zgodność `nmcli --ask` z docelową wersją NetworkManagera należy potwierdzić
+dopiero kontrolowanym live testem z dostępnym recovery.
 
 ## Model uprawnień
 

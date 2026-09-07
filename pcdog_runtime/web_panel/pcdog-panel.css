@@ -36,5 +36,6 @@ h1, h2, p { margin-top: 0; } h1 { margin-bottom: 0; font-size: 2rem; } h2 { font
 .login-card input { width: 100%; min-height: 48px; padding: 10px 12px; color: #f8fafc; background: #0c1423; border: 1px solid #5b708d; border-radius: 8px; font: inherit; }
 .login-card button, .quiet-button { min-height: 48px; border: 1px solid #5b708d; border-radius: 8px; padding: 10px 16px; color: #eff6ff; background: #1d4ed8; font: inherit; font-weight: 700; cursor: pointer; }
 .login-card button { width: 100%; margin-top: 16px; }
+.wifi-change button, .wifi-change select, .wifi-change input { min-height: 48px; font: inherit; }.wifi-change label { display: block; margin: 16px 0 8px; font-weight: 650; }.wifi-change select, .wifi-change input { width: 100%; padding: 10px 12px; color: #f8fafc; background: #0c1423; border: 1px solid #5b708d; border-radius: 8px; }.wifi-change form > button { width: 100%; margin-top: 16px; }.password-row { display: flex; gap: 8px; }.password-row .quiet-button { flex: 0 0 auto; }.wifi-change button:disabled { opacity: .65; cursor: wait; }
 .login-card button:disabled { opacity: .65; cursor: wait; }
 .quiet-button { color: #bfdbfe; background: transparent; font-weight: 600; }

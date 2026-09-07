@@ -77,11 +77,14 @@ class WebApiTests(unittest.TestCase):
         self.thread.join()
         self._directory.cleanup()
 
-    def _start_server(self, factory, *, max_event_limit: int, system_agent_status_provider=None):
+    def _start_server(self, factory, *, max_event_limit: int, system_agent_status_provider=None, wifi_list_provider=None, wifi_status_provider=None, wifi_connect=None):
         server = create_server(
             "127.0.0.1", 0, factory, max_event_limit=max_event_limit,
             authenticator=self.auth,
             system_agent_status_provider=system_agent_status_provider,
+            wifi_list_provider=wifi_list_provider,
+            wifi_status_provider=wifi_status_provider,
+            wifi_connect=wifi_connect,
         )
         thread = Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -152,6 +155,47 @@ class WebApiTests(unittest.TestCase):
         status, _, payload = self.request("GET", "/api/v1/system")
         self.assertEqual(status, 200)
         self.assertEqual(payload, {"status": "READY", "protocol_version": 1, "actions_enabled": False})
+
+    def test_wifi_scan_status_and_change_require_session_csrf_and_origin(self) -> None:
+        self.server.shutdown(); self.server.server_close(); self.thread.join()
+        calls: list[tuple[str, str, str | None]] = []
+        self.server, self.thread = self._start_server(
+            lambda: EventStore(self.database, read_only=True), max_event_limit=2,
+            wifi_list_provider=lambda: {"status": "AVAILABLE", "networks": [{"ssid": "Domowa", "bssid": "AA:BB:CC:DD:EE:FF", "security": "WPA2", "signal": 80}]},
+            wifi_status_provider=lambda: {"status": "IDLE"},
+            wifi_connect=lambda ssid, password, bssid: calls.append((ssid, password, bssid)) or {"status": "STARTED", "job_id": "safe-id"},
+        )
+        status, _, payload = self.request_without_session("GET", "/api/v1/wifi")
+        self.assertEqual((status, payload["error"]["code"]), (401, "AUTH_REQUIRED"))
+        status, _, payload = self.request("GET", "/api/v1/wifi")
+        self.assertEqual(status, 200); self.assertEqual(payload["networks"][0]["ssid"], "Domowa")
+        body = json.dumps({"ssid": "Domowa", "bssid": "AA:BB:CC:DD:EE:FF", "password": "secret-pass"})
+        origin = f"http://{self.server.server_address[0]}:{self.server.server_address[1]}"
+        status, _, payload = self.request_without_session("POST", "/api/v1/wifi/connection", headers={"Content-Type": "application/json", "Origin": origin}, body=body)
+        self.assertEqual((status, payload["error"]["code"]), (401, "AUTH_REQUIRED"))
+        status, _, payload = self.request("POST", "/api/v1/wifi/connection", headers={"Content-Type": "application/json"}, body=body)
+        self.assertEqual((status, payload["error"]["code"]), (403, "ORIGIN_INVALID"))
+        status, _, payload = self.request("POST", "/api/v1/wifi/connection", headers={"Content-Type": "application/json", "Origin": origin}, body=body)
+        self.assertEqual((status, payload["error"]["code"]), (403, "CSRF_INVALID"))
+        status, _, payload = self.request("POST", "/api/v1/wifi/connection", headers={"Content-Type": "application/json", "Origin": origin, "X-PcDog-CSRF": self.session.csrf_token}, body=body)
+        self.assertEqual(status, 202); self.assertEqual(payload, {"status": "STARTED", "job_id": "safe-id"})
+        self.assertEqual(calls, [("Domowa", "secret-pass", "AA:BB:CC:DD:EE:FF")])
+        self.assertNotIn("secret-pass", json.dumps(payload))
+
+    def test_wifi_post_rejects_bad_json_busy_and_agent_unavailable_without_secret(self) -> None:
+        status, _, payload = self.request("POST", "/api/v1/wifi/connection", headers={"Content-Type": "application/json"}, body="{")
+        self.assertEqual(status, 400); self.assertNotIn("secret", json.dumps(payload))
+        self.server.shutdown(); self.server.server_close(); self.thread.join()
+        origin = None
+        self.server, self.thread = self._start_server(lambda: EventStore(self.database, read_only=True), max_event_limit=2, wifi_connect=lambda *_: {"status": "BUSY"})
+        origin = f"http://{self.server.server_address[0]}:{self.server.server_address[1]}"
+        status, _, payload = self.request("POST", "/api/v1/wifi/connection", headers={"Content-Type": "application/json", "Origin": origin, "X-PcDog-CSRF": self.session.csrf_token}, body=json.dumps({"ssid": "Domowa", "password": "secret-pass"}))
+        self.assertEqual((status, payload["error"]["code"]), (409, "WIFI_CHANGE_BUSY"))
+        self.server.shutdown(); self.server.server_close(); self.thread.join()
+        self.server, self.thread = self._start_server(lambda: EventStore(self.database, read_only=True), max_event_limit=2, wifi_connect=lambda *_: {"status": "UNAVAILABLE"})
+        origin = f"http://{self.server.server_address[0]}:{self.server.server_address[1]}"
+        status, _, payload = self.request("POST", "/api/v1/wifi/connection", headers={"Content-Type": "application/json", "Origin": origin, "X-PcDog-CSRF": self.session.csrf_token}, body=json.dumps({"ssid": "Domowa", "password": "secret-pass"}))
+        self.assertEqual((status, payload["error"]["code"]), (503, "NETWORK_AGENT_UNAVAILABLE"))
 
     def test_root_serves_observational_web_panel_as_html(self) -> None:
         status, content_type, body = self.raw_request("/")
@@ -307,11 +351,11 @@ class WebPanelSourceTests(unittest.TestCase):
         endpoints = set(re.findall(r'["`](/api/v1/[^?"`]+)', self.javascript))
         self.assertEqual(
             endpoints,
-            {"/api/v1/health", "/api/v1/state", "/api/v1/events", "/api/v1/network", "/api/v1/system", "/api/v1/session"},
+            {"/api/v1/health", "/api/v1/state", "/api/v1/events", "/api/v1/network", "/api/v1/system", "/api/v1/session", "/api/v1/wifi", "/api/v1/wifi/connection"},
         )
         self.assertIn('method: "POST"', self.javascript)
         self.assertIn('method: "DELETE"', self.javascript)
-        self.assertNotRegex(self.javascript.lower(), r"/api/v1/(power|reset|control)")
+        self.assertNotRegex(self.javascript.lower(), r"/api/v1/(power|reset|control|reboot|shutdown)")
 
     def test_panel_has_only_auth_controls_and_no_external_assets(self) -> None:
         html = (self.panel_directory / "index.html").read_text(encoding="utf-8").lower()
@@ -325,6 +369,10 @@ class WebPanelSourceTests(unittest.TestCase):
         self.assertNotIn("eventsource", self.javascript.lower())
         self.assertIn("csrfToken", self.javascript)
         self.assertIn('credentials: "same-origin"', self.javascript)
+        self.assertIn('autocomplete="current-password"', html)
+        self.assertIn('type="password"', html)
+        self.assertIn('X-PcDog-CSRF', self.javascript)
+        self.assertNotIn("https://", self.javascript)
 
     def test_state_values_have_text_and_non_color_visual_distinction(self) -> None:
         self.assertIn("element.textContent = shown", self.javascript)
