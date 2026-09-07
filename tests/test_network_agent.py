@@ -11,6 +11,8 @@ from tempfile import TemporaryDirectory
 from threading import Event, Thread
 import time
 import unittest
+from unittest.mock import patch
+from uuid import UUID
 
 from pcdog_runtime.network_agent import (
     NetworkAgentError,
@@ -99,7 +101,7 @@ class NetworkAgentTests(unittest.TestCase):
             with self.subTest(password=value):
                 with self.assertRaises(NetworkAgentError): validate_password(value)
 
-    def test_nmcli_never_receives_password_in_argv(self) -> None:
+    def _connect_commands(self, bssid: str | None, *, ssid: str = "Home") -> list[tuple[list[str], str | None]]:
         executor = NmcliExecutor(); received: list[tuple[list[str], str | None]] = []
 
         def run(arguments, *, timeout, input_text=None):
@@ -109,10 +111,51 @@ class NetworkAgentTests(unittest.TestCase):
 
         executor._run = run  # type: ignore[method-assign]
         executor.active_wifi = lambda: PreviousConnection("wlan0", "old")  # type: ignore[method-assign]
-        executor.connect("Home", "AA:BB:CC:DD:EE:FF", "never-in-argv", 30)
+        with patch("pcdog_runtime.network_agent.uuid.uuid4", return_value=UUID("12345678-1234-5678-1234-567812345678")):
+            executor.connect(ssid, bssid, "never-in-argv", 30)
+        return received
+
+    def test_nmcli_connection_add_argv_is_delimited_for_basic_wpa_profile(self) -> None:
+        received = self._connect_commands(None)
+        temporary = "pcdog-wifi-12345678123456781234567812345678"
+        self.assertEqual(received[0][0], [
+            "nmcli", "connection", "add", "save", "no", "type", "wifi", "ifname", "wlan0",
+            "con-name", temporary, "ssid", "Home", "--", "wifi-sec.key-mgmt", "wpa-psk",
+        ])
+        self.assertEqual(received[1][0], ["nmcli", "--ask", "--wait", "30", "connection", "up", "id", temporary, "ifname", "wlan0"])
+        self.assertEqual(received[1][1], "never-in-argv\n")
+
+    def test_nmcli_connection_add_argv_places_bssid_after_delimiter(self) -> None:
+        received = self._connect_commands("AA:BB:CC:DD:EE:FF", ssid="literal;not-a-shell-command")
+        arguments = received[0][0]
+        delimiter = arguments.index("--")
+        self.assertEqual(arguments[delimiter + 1:], ["wifi-sec.key-mgmt", "wpa-psk", "802-11-wireless.bssid", "AA:BB:CC:DD:EE:FF"])
+        self.assertEqual(arguments[3:5], ["save", "no"])
+        self.assertEqual(arguments[arguments.index("ssid") + 1], "literal;not-a-shell-command")
+
+    def test_nmcli_never_receives_password_in_argv_or_shell(self) -> None:
+        received = self._connect_commands("AA:BB:CC:DD:EE:FF")
         self.assertTrue(all("never-in-argv" not in arguments for arguments, _ in received))
         self.assertEqual(received[-1][1], "never-in-argv\n")
-        self.assertIn("save", received[0][0]); self.assertIn("no", received[0][0])
+        source = Path(__file__).parents[1].joinpath("pcdog_runtime/network_agent.py").read_text(encoding="utf-8")
+        self.assertIn("subprocess.run(arguments", source)
+        self.assertNotIn("shell=True", source)
+
+    def test_nmcli_confirmation_queries_ip_using_documented_device_show_syntax(self) -> None:
+        executor = NmcliExecutor(); received: list[list[str]] = []
+
+        def run(arguments, *, timeout, input_text=None):
+            received.append(arguments)
+            from subprocess import CompletedProcess
+            if arguments[-2:] == ["device", "wifi"]:
+                return CompletedProcess(arguments, 0, "yes:Home:AA\\:BB\\:CC\\:DD\\:EE\\:FF\n", "")
+            if arguments[-2:] == ["device", "status"]:
+                return CompletedProcess(arguments, 0, "wlan0:wifi:connected:old-profile\n", "")
+            return CompletedProcess(arguments, 0, "192.168.7.162/22\n", "")
+
+        executor._run = run  # type: ignore[method-assign]
+        self.assertTrue(executor.is_confirmed("Home", "AA:BB:CC:DD:EE:FF"))
+        self.assertEqual(received[-1], ["nmcli", "--get-values", "IP4.ADDRESS", "device", "show", "wlan0"])
 
     def test_single_job_success_requires_network_manager_and_ip_confirmation(self) -> None:
         executor = FakeExecutor(confirmed=True); manager = WifiJobManager(executor)

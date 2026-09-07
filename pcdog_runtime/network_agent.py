@@ -151,7 +151,7 @@ class NmcliExecutor:
         if current is None:
             raise NetworkAgentError("CONNECTION_FAILED")
         temporary = "pcdog-wifi-" + uuid.uuid4().hex
-        arguments = ["nmcli", "connection", "add", "save", "no", "type", "wifi", "ifname", current.device, "con-name", temporary, "ssid", ssid, "wifi-sec.key-mgmt", "wpa-psk"]
+        arguments = ["nmcli", "connection", "add", "save", "no", "type", "wifi", "ifname", current.device, "con-name", temporary, "ssid", ssid, "--", "wifi-sec.key-mgmt", "wpa-psk"]
         if bssid is not None:
             arguments.extend(["802-11-wireless.bssid", bssid])
         self._run(arguments, timeout=5)
@@ -166,7 +166,7 @@ class NmcliExecutor:
         active = self.active_wifi()
         if active is None:
             return False
-        addresses = self._run(["nmcli", "--get-values", "IP4.ADDRESS", "device", "show", "device", active.device], timeout=5)
+        addresses = self._run(["nmcli", "--get-values", "IP4.ADDRESS", "device", "show", active.device], timeout=5)
         return any(line.strip() for line in addresses.stdout.splitlines())
 
     def rollback(self, previous: PreviousConnection) -> None:
