@@ -29,6 +29,7 @@ readonly -a PYTHON_PACKAGE_FILES=(
   'input_monitor.py'
   'inputs.py'
   'models.py'
+  'network_status.py'
   'read_only_runtime.py'
   'state_engine.py'
   'web_api.py'

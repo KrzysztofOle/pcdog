@@ -1,55 +1,58 @@
 <!doctype html>
 <html lang="pl">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>PcDog — panel obserwacyjny</title>
-    <link rel="stylesheet" href="/static/pcdog-panel.css">
-  </head>
-  <body>
-    <main class="page">
-      <header class="page-header">
-        <div>
-          <p class="eyebrow">PCDOG · READ-ONLY</p>
-          <h1>Panel stanu</h1>
-        </div>
-        <p id="refresh-status" class="refresh-status" role="status">Oczekiwanie na dane…</p>
-      </header>
-
-      <section class="status-grid" aria-label="Bieżący stan">
-        <article class="card">
-          <h2>PC STATUS</h2>
-          <dl class="status-list">
-            <div><dt>PC_STATE</dt><dd id="pc-state" class="badge badge-unknown">UNKNOWN</dd></div>
-            <div><dt>POWER LED</dt><dd id="power-led" class="badge badge-unknown">UNKNOWN</dd></div>
-            <div><dt>HDD ACTIVITY</dt><dd id="hdd-activity" class="badge badge-unknown">UNKNOWN</dd></div>
-            <div><dt>Ostatnia aktualizacja</dt><dd id="state-updated-at">brak danych</dd></div>
-          </dl>
-        </article>
-
-        <article class="card">
-          <h2>PCDOG STATUS</h2>
-          <dl class="status-list">
-            <div><dt>PCDOG_STATE</dt><dd id="pcdog-state" class="badge badge-unknown">UNKNOWN</dd></div>
-            <div><dt>API HEALTH</dt><dd id="api-health" class="badge badge-unknown">brak danych</dd></div>
-          </dl>
-          <p id="health-detail" class="detail">Wynik endpointu /api/v1/health pojawi się po odświeżeniu.</p>
-        </article>
-      </section>
-
-      <section class="card events-card" aria-labelledby="recent-events-heading">
-        <div class="section-heading">
-          <h2 id="recent-events-heading">RECENT EVENTS</h2>
-          <p id="events-detail" class="detail">Oczekiwanie na historię…</p>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Timestamp (czas lokalny)</th><th>Typ</th><th>Źródło</th><th>Poprzednia wartość</th><th>Nowa wartość</th></tr></thead>
-            <tbody id="events-list"><tr><td colspan="5">Brak danych o zdarzeniach.</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-    <script src="/static/pcdog-panel.js" defer></script>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PcDog — Status</title>
+  <link rel="stylesheet" href="/static/pcdog-panel.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Przejdź do treści</a>
+  <header class="app-header"><a class="brand" href="#status">PcDog</a><span class="detail">Tylko odczyt</span></header>
+  <nav class="navigation" aria-label="Nawigacja główna">
+    <a href="#status" aria-current="page"><span aria-hidden="true">◉</span>Status</a>
+    <a href="#history"><span aria-hidden="true">≡</span>Historia</a>
+    <a href="#network"><span aria-hidden="true">⌁</span>Sieć</a>
+    <a href="#settings"><span aria-hidden="true">⚙</span>Ustawienia</a>
+  </nav>
+  <main id="content" class="page" tabindex="-1">
+    <div class="page-header"><h1 id="view-title">Status</h1><p id="refresh-status" class="detail" role="status">Oczekiwanie na dane…</p></div>
+    <noscript><p>Włącz JavaScript, aby odczytać dane i przełączać widoki panelu.</p></noscript>
+    <section data-view="status" aria-label="Status">
+      <div class="status-grid">
+        <article class="card"><h2>Komputer</h2><dl class="status-list">
+          <div><dt>Stan PC</dt><dd id="pc-state" class="badge badge-unknown">UNKNOWN</dd></div>
+          <div><dt>POWER LED</dt><dd id="power-led" class="badge badge-unknown">UNKNOWN</dd></div>
+          <div><dt>Aktywność HDD</dt><dd id="hdd-activity" class="badge badge-unknown">UNKNOWN</dd></div>
+          <div><dt>Ostatni odczyt stanu</dt><dd id="state-updated-at">brak danych</dd></div>
+        </dl><p id="state-reliability" class="detail"></p></article>
+        <article class="card"><h2>PcDog</h2><dl class="status-list">
+          <div><dt>Stan runtime</dt><dd id="pcdog-state" class="badge badge-unknown">UNKNOWN</dd></div>
+          <div><dt>Odpowiedź API</dt><dd id="api-health" class="badge badge-unknown">brak danych</dd></div>
+        </dl><p id="health-detail" class="detail">Oczekiwanie na API.</p>
+        <p class="detail">Odpowiedź API nie potwierdza działania czujników ani całego Raspberry Pi.</p></article>
+      </div>
+      <article class="card"><h2>Połączenie sieciowe</h2><p id="network-summary">Oczekiwanie na dane…</p><a class="text-link" href="#network">Szczegóły sieci</a></article>
+    </section>
+    <section data-view="history" aria-label="Historia" hidden>
+      <p id="events-detail" class="detail">Ostatnie 25 zdarzeń · najnowsze na początku</p>
+      <ol id="events-list" class="events-list"><li class="card">Oczekiwanie na historię…</li></ol>
+    </section>
+    <section data-view="network" aria-label="Sieć" hidden>
+      <p class="detail">Bieżące dane NetworkManager. Nazwa profilu połączenia nie musi być nazwą sieci Wi-Fi (SSID).</p>
+      <div id="network-list" class="status-grid"><p class="card">Oczekiwanie na dane…</p></div>
+      <p class="notice">Zmiana sieci i podanie hasła nie są jeszcze dostępne.</p>
+    </section>
+    <section data-view="settings" aria-label="Ustawienia" hidden>
+      <article class="card"><h2>Panel obserwacyjny</h2><dl class="status-list">
+        <div><dt>Tryb pracy</dt><dd>Tylko odczyt</dd></div>
+        <div><dt>Odświeżanie</dt><dd>Co 5 sekund</dd></div>
+        <div><dt>Historia</dt><dd>Ostatnie 25 zdarzeń</dd></div>
+        <div><dt>Czas</dt><dd id="browser-timezone">Strefa przeglądarki</dd></div>
+      </dl></article>
+      <article class="card"><h2>Operacje systemowe</h2><p>Restart i wyłączenie Raspberry Pi będą dostępne po dodaniu zabezpieczonej obsługi administracyjnej.</p><p class="detail">Ten panel nie steruje Raspberry Pi ani przyciskami POWER i RESET komputera.</p></article>
+    </section>
+  </main>
+  <script src="/static/pcdog-panel.js" defer></script>
+</body>
 </html>

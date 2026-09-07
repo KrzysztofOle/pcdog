@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .event_store import EventStore, EventStoreError, StoredEvent
 from .models import PcDogState, StateSnapshot
+from .network_status import read_network_status
 
 
 class HealthProvider(Protocol):
@@ -76,6 +77,9 @@ class ReadOnlyApi:
         if path == "/api/v1/health":
             self._require_only_parameters(query, set())
             return {"status": self._health_provider.status().value}
+        if path == "/api/v1/network":
+            self._require_only_parameters(query, set())
+            return read_network_status()
         if path == "/api/v1/state":
             self._require_only_parameters(query, set())
             return self._state_payload()

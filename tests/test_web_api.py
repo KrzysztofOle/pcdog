@@ -117,9 +117,10 @@ class WebApiTests(unittest.TestCase):
         status, content_type, body = self.raw_request("/")
         self.assertEqual(status, 200)
         self.assertEqual(content_type, "text/html; charset=utf-8")
-        self.assertIn("PC STATUS", body)
-        self.assertIn("PCDOG STATUS", body)
-        self.assertIn("RECENT EVENTS", body)
+        self.assertIn("Komputer", body)
+        for view in ("status", "history", "network", "settings"):
+            self.assertIn(f'data-view="{view}"', body)
+            self.assertIn(f'href="#{view}"', body)
 
     def test_web_panel_static_assets_are_available_with_explicit_types(self) -> None:
         for path, content_type in (
@@ -216,11 +217,11 @@ class WebPanelSourceTests(unittest.TestCase):
     def stylesheet(self) -> str:
         return (self.panel_directory / "pcdog-panel.css").read_text(encoding="utf-8")
 
-    def test_panel_uses_only_three_read_only_api_endpoints(self) -> None:
+    def test_panel_uses_only_four_read_only_api_endpoints(self) -> None:
         endpoints = set(re.findall(r'["`](/api/v1/[^?"`]+)', self.javascript))
         self.assertEqual(
             endpoints,
-            {"/api/v1/health", "/api/v1/state", "/api/v1/events"},
+            {"/api/v1/health", "/api/v1/state", "/api/v1/events", "/api/v1/network"},
         )
         self.assertIn('method: "GET"', self.javascript)
         self.assertNotRegex(self.javascript.lower(), r"/api/v1/(power|reset|control)")
@@ -256,6 +257,16 @@ class WebPanelSourceTests(unittest.TestCase):
         self.assertIn("eventsLimit: 25", self.javascript)
         self.assertIn("if (refreshInFlight) return", self.javascript)
         self.assertIn("window.setInterval(refresh, CONFIG.pollingIntervalMs)", self.javascript)
+
+    def test_mobile_navigation_and_history_contract(self) -> None:
+        self.assertIn('window.addEventListener("hashchange"', self.javascript)
+        self.assertIn('section.hidden = section.dataset.view !== view', self.javascript)
+        self.assertIn('link.setAttribute("aria-current", "page")', self.javascript)
+        self.assertIn('[...events].reverse()', self.javascript)
+        self.assertIn('env(safe-area-inset-bottom)', self.stylesheet)
+        self.assertIn('min-height: 48px', self.stylesheet)
+        self.assertNotIn('min-width: 700px', self.stylesheet)
+        self.assertNotIn('innerHTML', self.javascript)
 
 
 if __name__ == "__main__":

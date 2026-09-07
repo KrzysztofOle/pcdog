@@ -45,13 +45,30 @@ ani Control API; metody inne niż GET zwracają `405`. Testy wiążą serwer tyl
 loopback i portem efemerycznym. Nie ustalono jeszcze produkcyjnego bindu,
 uwierzytelnienia produkcyjnego; API nie steruje sprzętem ani GPIO.
 
-## Web Panel obserwacyjny
+## Web Panel obserwacyjny — etap 1
+
+Panel ma cztery widoki z adresami `#status`, `#history`, `#network`
+i `#settings`. Na telefonie nawigacja znajduje się u dołu ekranu; historia
+to karty ostatnich 25 zdarzeń, od najnowszego, bez przewijania poziomego.
+Nawigacja obsługuje historię przeglądarki, klawiaturę i oznaczenie bieżącej strony.
+Ustawienia pokazują wyłącznie informacje o trybie odczytowym.
+Nie dodano logowania, restartu, wyłączania, zmiany Wi-Fi ani sterowania PC.
+
+`GET /api/v1/network` odczytuje interfejsy, stan, nazwę profilu i adresy IP
+przez ograniczone czasem (2 s) `nmcli device show`. Nie skanuje sieci,
+nie czyta sekretów ani nie modyfikuje profili. Brak nmcli, odmowa dostępu
+lub timeout daje `UNAVAILABLE`, a nie informację o rozłączeniu.
+Nazwa profilu nie jest traktowana jako SSID. Nie są jeszcze raportowane
+siła sygnału, uptime ani potwierdzony stan połączenia ZeroTier.
+Endpoint nie zmienia uprawnień usługi. Status sieci jest dostępny na tych
+samych interfejsach HTTP co dotychczasowy panel, bez uwierzytelnienia;
+panel nie powinien być wystawiany do publicznego Internetu.
 
 Ten sam testowalny serwer HTTP udostępnia minimalny panel statyczny pod `GET /`
 oraz jego lokalne zasoby pod `/static/pcdog-panel.css` i
 `/static/pcdog-panel.js`. Panel nie wymaga Node.js, procesu build, CDN ani
 zewnętrznej sieci. Jest wyłącznie klientem `GET /api/v1/health`,
-`GET /api/v1/state` i `GET /api/v1/events?limit=N`; nie ma kontrolek ani
+`GET /api/v1/state`, `GET /api/v1/network` i `GET /api/v1/events?limit=N`; nie ma kontrolek administracyjnych ani
 endpointów POWER, RESET czy Control API.
 
 Domyślnie panel odświeża dane co 5 sekund (stała `pollingIntervalMs` w pliku
