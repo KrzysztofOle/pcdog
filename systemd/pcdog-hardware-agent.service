@@ -1,5 +1,5 @@
 [Unit]
-Description=PcDog read-only GPIO hardware agent
+Description=PcDog constrained GPIO hardware agent
 Documentation=https://github.com/KrzysztofOle/pcdog
 After=local-fs.target
 
@@ -8,6 +8,7 @@ Type=simple
 User=root
 Group=pcdog
 ExecStart=/opt/pcdog/bin/pcdog-hardware-agent
+EnvironmentFile=-/etc/pcdog/hardware-control.conf
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=10s
@@ -30,7 +31,8 @@ LockPersonality=yes
 CapabilityBoundingSet=
 DevicePolicy=closed
 # Linux GPIO character-device requires O_RDWR even when gpioget requests an
-# input line. The agent code exposes only the fixed GPIO19/GPIO20 input read.
+# input line. The agent exposes only GPIO19/GPIO20 reads and, when explicitly
+# configured, bounded semantic pulses on fixed GPIO16/GPIO17.
 DeviceAllow=/dev/gpiochip0 rw
 
 [Install]

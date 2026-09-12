@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
-# Dedicated read-only GPIO agent: only GPIO19 and GPIO20 are readable.
+# Dedicated GPIO agent. GPIO19/GPIO20 are always read-only; output commands
+# remain disabled unless root supplied a confirmed control polarity.
 set -eu
 export PYTHONPATH='/opt/pcdog/lib'
-exec /usr/bin/python3 -m pcdog_runtime.hardware_agent --socket /run/pcdog-hardware-agent/agent.sock
+readonly HARDWARE_AGENT_SOCKET='/run/pcdog-hardware-agent/agent.sock'
+
+case "${PCDOG_CONTROL_POLARITY:-}" in
+  '')
+    exec /usr/bin/python3 -m pcdog_runtime.hardware_agent --socket "$HARDWARE_AGENT_SOCKET"
+    ;;
+  active-high|active-low)
+    exec /usr/bin/python3 -m pcdog_runtime.hardware_agent --socket "$HARDWARE_AGENT_SOCKET" --control-polarity "$PCDOG_CONTROL_POLARITY"
+    ;;
+  *)
+    echo 'Nieprawidłowe PCDOG_CONTROL_POLARITY; sterowanie GPIO nie zostanie uruchomione.' >&2
+    exit 64
+    ;;
+esac

@@ -45,6 +45,7 @@ readonly -a PYTHON_PACKAGE_FILES=(
   'event_store.py'
   'hardware_agent.py'
   'hardware_agent_client.py'
+  'hardware_loopback.py'
   'input_monitor.py'
   'inputs.py'
   'models.py'

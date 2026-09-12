@@ -43,14 +43,47 @@ Przyszła wersja płytki doda dwa wejścia:
 
 Nie przypisano im jeszcze żadnych GPIO ani fizycznych pinów.
 
-## Granice przyszłej implementacji
+## Implementacja i granice sterowania
 
-IMPLEMENTED (software): hardware-agent przekazuje wyłącznie surowe i wiarygodne
-odczyty GPIO19/GPIO20 przez `GPIO InputSource -> InputMonitor -> StateEngine`.
-Debounce POWER LED i hold HDD pozostają w `InputMonitor`. GPIO16 POWER CONTROL
-jest **inactive / not enabled**, a GPIO17 RESET CONTROL jest **inactive / not
-enabled**. Agent nie udostępnia output ani arbitralnego dostępu do GPIO.
+IMPLEMENTED (software): hardware-agent przekazuje surowe i wiarygodne odczyty
+GPIO19/GPIO20 przez `GPIO InputSource -> InputMonitor -> StateEngine`. Debounce
+POWER LED i hold HDD pozostają w `InputMonitor`.
 
-LIVE TESTED: brak. Physical wiring GPIO19/GPIO20: **NOT TESTED**. POWER i RESET
-są operacjami podwyższonego ryzyka i wymagają osobnego zatwierdzenia Human
-Authority; to mapowanie nie upoważnia do ich wykonania.
+Agent zna wyłącznie dwa semantyczne impulsy: `pulse_power` dla GPIO16 i
+`pulse_reset` dla GPIO17. Nie przyjmuje numeru linii ani ogólnej operacji
+`set_gpio`. Impuls ma domyślnie 200 ms, a ewentualny parametr jest ograniczony
+fail-closed do 50–500 ms. Jeden globalny lock odrzuca próbę jednoczesnej
+aktywacji. `gpioset --toggle <czas>,0` przełącza wybraną linię z aktywnej na
+nieaktywną przed zwolnieniem jej do INPUT; timeout i wyjątek kończą proces
+utrzymujący linię.
+
+**FAIL-CLOSED POLARITY:** w zwykłej instalacji GPIO16 i GPIO17 pozostają INPUT,
+a `pulse_power`/`pulse_reset` zwracają `ACTION_NOT_ENABLED`. Nie ma domyślnej
+polaryzacji. Dopiero udokumentowane, fizyczne potwierdzenie poziomu aktywnego
+obu transoptorów może utworzyć plik root-only
+`/etc/pcdog/hardware-control.conf` o dokładnej treści jednej z poniższych:
+
+```text
+PCDOG_CONTROL_POLARITY=active-high
+```
+
+lub:
+
+```text
+PCDOG_CONTROL_POLARITY=active-low
+```
+
+Następnie wymagany jest kontrolowany restart tylko
+`pcdog-hardware-agent.service` i ponowne sprawdzenie baseline wejść. Ta
+konfiguracja jest decyzją sprzętową, nie może pochodzić od klienta IPC. Bez
+takiego potwierdzenia nie wolno wykonywać live pulse.
+
+`python3 -m pcdog_runtime.hardware_loopback --channel power` lub `--channel
+reset` jest narzędziem jednorazowej obserwacji: przez socket wysyła dokładnie
+jeden odpowiedni semantyczny impuls i odczytuje GPIO19/GPIO20 podczas jego
+trwania. Nie ma argumentu GPIO ani czasu i nie ma bezpośredniego dostępu do
+`/dev/gpiochip0`.
+
+LIVE TESTED: brak. Physical wiring GPIO19/GPIO20: **NOT TESTED**. Polaryzacja
+GPIO16/GPIO17: **UNCONFIRMED**. POWER i RESET są operacjami podwyższonego
+ryzyka; to mapowanie nie upoważnia do ich wykonania.

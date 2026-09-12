@@ -24,19 +24,28 @@ Oddziela czasowy debounce POWER LED oraz politykę hold dla impulsów HDD od
 interpretacji domenowej w State Engine.
 
 IMPLEMENTED (software): `pcdog-hardware-agent.service` działa jako `root:pcdog`
-i odczytuje wyłącznie GPIO19 (HDD LED) oraz GPIO20 (POWER LED), przez
-`gpioget` i `/dev/gpiochip0` w trybie read-only. Linux GPIO character-device
-wymaga deskryptora `O_RDWR` także dla żądania wejścia; dostęp unitu jest mimo
-to ograniczony do jednego urządzenia, a kod agenta wykonuje wyłącznie odczyt.
-Jego zamknięty socket Unix
-przyjmuje tylko `status` i `read_inputs`; nie ma operacji output ani API z
-numerem GPIO od klienta. `pcdog.service` zachowuje `PrivateDevices=yes`, nie
-należy do grupy GPIO i odbiera dane przez socket. Błąd GPIO lub brak agenta
-jest mapowany na niewiarygodny `UNKNOWN`, a nie `OFF`.
+i odczytuje GPIO19 (HDD LED) oraz GPIO20 (POWER LED) przez `gpioget`. Linux
+GPIO character-device wymaga deskryptora `O_RDWR` także dla żądania wejścia;
+dostęp unitu pozostaje ograniczony do `/dev/gpiochip0`. `pcdog.service`
+zachowuje `PrivateDevices=yes`, nie należy do grupy GPIO i odbiera dane przez
+socket. Błąd GPIO lub brak agenta jest mapowany na niewiarygodny `UNKNOWN`, a
+nie `OFF`.
 
-GPIO16 POWER CONTROL: **inactive / not enabled**. GPIO17 RESET CONTROL:
-**inactive / not enabled**. Żadna z tych linii nie jest używana przez usługę.
-Physical wiring: **NOT TESTED**.
+Socket przyjmuje zawsze tylko `status` i `read_inputs`, a przy jawnie włączonym
+sterowaniu dodatkowo wyłącznie `pulse_power` oraz `pulse_reset`. Nie ma API z
+numerem GPIO, `set_gpio`, utrzymania output przez klienta ani nieograniczonego
+czasu. Agent sam utrzymuje pojedynczy impuls 50–500 ms (domyślnie 200 ms),
+zwraca linię do stanu nieaktywnego i zwalnia ją do INPUT; wyjątek, timeout albo
+zamknięcie IPC nie może przedłużyć impulsu. POWER i RESET są wzajemnie
+wykluczone.
+
+Domyślnie usługa nie otrzymuje `PCDOG_CONTROL_POLARITY`, dlatego GPIO16 i
+GPIO17 pozostają INPUT, a oba polecenia impulsu są odrzucone. Plik opcjonalny
+`/etc/pcdog/hardware-control.conf` jest wczytywany wyłącznie jako
+`EnvironmentFile` systemd i musi mieć jedną potwierdzoną wartość
+`PCDOG_CONTROL_POLARITY=active-high` albo `active-low`. Brak potwierdzonej
+polaryzacji jest warunkiem bezwzględnego zakazu live testu. Szczegóły mapowania
+i procedury znajdują się w [dokumentacji GPIO](gpio-mapping.md).
 
 `EventStore` używa standardowej biblioteki `sqlite3`: utrzymuje append-only
 `events` i restart-safe `current_state`, zapisywane atomowo w jednej transakcji.

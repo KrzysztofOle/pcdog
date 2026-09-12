@@ -11,6 +11,40 @@ from .inputs import InputReading
 from .models import HddActivity, PowerLedState
 
 
+class HardwareAgentControlClient:
+    """Klient dwóch semantycznych operacji impulsowych hardware-agenta."""
+
+    def __init__(self, socket_path: Path = DEFAULT_SOCKET_PATH, *, timeout: float = 2.0) -> None:
+        self._socket_path = socket_path
+        self._timeout = timeout
+
+    def pulse_power(self, duration_ms: int | None = None) -> int:
+        return self._pulse("pulse_power", duration_ms)
+
+    def pulse_reset(self, duration_ms: int | None = None) -> int:
+        return self._pulse("pulse_reset", duration_ms)
+
+    def _pulse(self, operation: str, duration_ms: int | None) -> int:
+        request: dict[str, object] = {"operation": operation}
+        if duration_ms is not None:
+            request["duration_ms"] = duration_ms
+        response = self._request(request)
+        if response.get("status") != "PULSE_COMPLETED" or not isinstance(response.get("duration_ms"), int):
+            raise RuntimeError(f"Hardware-agent odrzucił impuls: {response.get('status', 'INVALID_RESPONSE')}")
+        return response["duration_ms"]
+
+    def _request(self, request: dict[str, object]) -> dict[str, object]:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(self._timeout)
+            connection.connect(str(self._socket_path))
+            connection.sendall(json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
+            raw_response = connection.makefile("rb").readline(MAX_REQUEST_BYTES + 1)
+        response = json.loads(raw_response.decode("utf-8"))
+        if not isinstance(response, dict):
+            raise ValueError("Nieprawidłowa odpowiedź hardware-agenta")
+        return response
+
+
 class HardwareAgentInputSource:
     """Zwraca UNKNOWN/niewiarygodne dane przy utracie agenta lub protokołu."""
 
