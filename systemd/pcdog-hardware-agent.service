@@ -1,35 +1,35 @@
 [Unit]
-Description=PcDog Web API and Web Panel
+Description=PcDog read-only GPIO hardware agent
 Documentation=https://github.com/KrzysztofOle/pcdog
-After=network.target pcdog-system-agent.service pcdog-network-agent.service pcdog-hardware-agent.service
-Wants=pcdog-system-agent.service pcdog-network-agent.service pcdog-hardware-agent.service
+After=local-fs.target
 
 [Service]
 Type=simple
-User=pcdog
+User=root
 Group=pcdog
-WorkingDirectory=/opt/pcdog
-ExecStart=/opt/pcdog/bin/pcdog-runtime
+ExecStart=/opt/pcdog/bin/pcdog-hardware-agent
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=10s
 KillSignal=SIGTERM
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=pcdog
+SyslogIdentifier=pcdog-hardware-agent
 NoNewPrivileges=yes
-PrivateDevices=yes
+PrivateDevices=no
 PrivateTmp=yes
 ProtectControlGroups=yes
 ProtectHome=yes
 ProtectKernelModules=yes
 ProtectKernelTunables=yes
 ProtectSystem=strict
-StateDirectory=pcdog-runtime
-StateDirectoryMode=0750
+RuntimeDirectory=pcdog-hardware-agent
+RuntimeDirectoryMode=0750
 RestrictSUIDSGID=yes
 LockPersonality=yes
 CapabilityBoundingSet=
+DevicePolicy=closed
+DeviceAllow=/dev/gpiochip0 r
 
 [Install]
 WantedBy=multi-user.target

@@ -1,34 +1,47 @@
 # Runtime PcDog i usługa systemd
 
 Instalator runtime instaluje `pcdog.service` jako Web API i Web Panel,
-`pcdog-system-agent.service` jako oddzielony agent statusowy oraz
+`pcdog-system-agent.service` jako oddzielony agent statusowy,
+`pcdog-hardware-agent.service` jako agent wejść GPIO oraz
 `pcdog-network-agent.service` jako wąsko ograniczony agent Wi-Fi. Panel nie
 używa GPIO i nie steruje komputerem; nie zawiera POWER, RESET ani Control API.
 
 ## Czysty model domenowy i State Engine
 
-Repozytorium zawiera także czysty pakiet Python `pcdog_runtime`, który nie jest
-jeszcze uruchamiany przez `pcdog.service`. Definiuje on `PC_STATE` (`OFF`, `ON`,
+Repozytorium zawiera także pakiet Python `pcdog_runtime`, uruchamiany przez
+`pcdog.service`. Definiuje on `PC_STATE` (`OFF`, `ON`,
 `UNKNOWN`), `PCDOG_STATE` (`HEALTHY`, `DEGRADED`, `ERROR`), nietrwały snapshot,
 zdarzenia domenowe oraz State Engine.
 
 State Engine przyjmuje tylko abstrakcyjne `InputReading`: wiarygodny POWER LED
 wyznacza `PC_STATE`, a HDD activity jest przechowywane niezależnie i nigdy samo
 nie zmienia stanu PC. Dostępny `FakeInputSource` służy wyłącznie testom i
-deterministycznej symulacji. Pakiet nie używa GPIO, SQLite, sieci, systemd ani
-sprzętu; adapter wejść i persistence będą osobnymi etapami.
+deterministycznej symulacji.
 
-`InputMonitor` działa obecnie wyłącznie z abstrakcyjnym/fake `InputSource`.
+`InputMonitor` działa z abstrakcyjnym `InputSource`; produkcyjnie korzysta z
+klienta hardware-agenta.
 Oddziela czasowy debounce POWER LED oraz politykę hold dla impulsów HDD od
-interpretacji domenowej w State Engine. Nie istnieje jeszcze adapter prawdziwego
-GPIO ani żadna interakcja z fizycznymi pinami.
+interpretacji domenowej w State Engine.
+
+IMPLEMENTED (software): `pcdog-hardware-agent.service` działa jako `root:pcdog`
+i odczytuje wyłącznie GPIO19 (HDD LED) oraz GPIO20 (POWER LED), przez
+`gpioget` i `/dev/gpiochip0` w trybie read-only. Jego zamknięty socket Unix
+przyjmuje tylko `status` i `read_inputs`; nie ma operacji output ani API z
+numerem GPIO od klienta. `pcdog.service` zachowuje `PrivateDevices=yes`, nie
+należy do grupy GPIO i odbiera dane przez socket. Błąd GPIO lub brak agenta
+jest mapowany na niewiarygodny `UNKNOWN`, a nie `OFF`.
+
+GPIO16 POWER CONTROL: **inactive / not enabled**. GPIO17 RESET CONTROL:
+**inactive / not enabled**. Żadna z tych linii nie jest używana przez usługę.
+Physical wiring: **NOT TESTED**.
 
 `EventStore` używa standardowej biblioteki `sqlite3`: utrzymuje append-only
 `events` i restart-safe `current_state`, zapisywane atomowo w jednej transakcji.
 Schemat ma minimalne wersjonowanie, a baza korzysta z WAL i `busy_timeout`.
 Kod nie narzuca ścieżki pliku; docelową lokalizacją produkcyjną pozostaje
-`/var/lib/pcdog`. W tym etapie nie zmieniono jednak systemd ani uprawnień, nie
-zapisano produkcyjnej bazy na PcDog1 i nadal nie istnieje adapter GPIO.
+`/var/lib/pcdog`. Runtime cyklicznie przekazuje odczyty do `InputMonitor` i
+zapisuje wyniki atomowo do tej samej bazy SQLite, z której API odczytuje stan
+i historię. Restart runtime nie usuwa bazy ani historii.
 
 ## Web API v1
 

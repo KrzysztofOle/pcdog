@@ -25,7 +25,7 @@ elif [[ $# -eq 1 ]]; then
   check_only=true
 fi
 
-readonly REQUIRED_PACKAGES=(ca-certificates curl git)
+readonly REQUIRED_PACKAGES=(ca-certificates curl git gpiod)
 
 require_command dpkg-query
 

@@ -45,8 +45,12 @@ Nie przypisano im jeszcze żadnych GPIO ani fizycznych pinów.
 
 ## Granice przyszłej implementacji
 
-Adapter GPIO będzie przekazywał wyłącznie surowe i wiarygodne odczyty przez
-`GPIO InputSource -> InputMonitor -> StateEngine`. Debounce POWER LED i hold
-HDD pozostają w `InputMonitor`. POWER i RESET są operacjami podwyższonego
-ryzyka i wymagają osobnego zatwierdzenia Human Authority; to mapowanie nie
-upoważnia do ich wykonania.
+IMPLEMENTED (software): hardware-agent przekazuje wyłącznie surowe i wiarygodne
+odczyty GPIO19/GPIO20 przez `GPIO InputSource -> InputMonitor -> StateEngine`.
+Debounce POWER LED i hold HDD pozostają w `InputMonitor`. GPIO16 POWER CONTROL
+jest **inactive / not enabled**, a GPIO17 RESET CONTROL jest **inactive / not
+enabled**. Agent nie udostępnia output ani arbitralnego dostępu do GPIO.
+
+LIVE TESTED: brak. Physical wiring GPIO19/GPIO20: **NOT TESTED**. POWER i RESET
+są operacjami podwyższonego ryzyka i wymagają osobnego zatwierdzenia Human
+Authority; to mapowanie nie upoważnia do ich wykonania.

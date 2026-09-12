@@ -1,8 +1,8 @@
 # PcDog
 
 PcDog przygotowuje Raspberry Pi Zero 2 W do przyszłej roli kontrolera komputera.
-Pierwsza faza zapewnia powtarzalny, bezpieczny fundament systemowy; nie steruje
-jeszcze GPIO ani komputerem.
+Pierwsza faza zapewnia powtarzalny, bezpieczny fundament systemowy. W v0.1-test
+obsługuje obserwacyjnie wejścia GPIO19/GPIO20; nie steruje komputerem.
 
 ## Przygotowanie nowego Raspberry Pi
 
