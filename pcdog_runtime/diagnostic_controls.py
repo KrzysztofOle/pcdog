@@ -226,7 +226,8 @@ def _read_output_levels(signals: Sequence[tuple[str, int]]) -> list[tuple[str, i
         line = next((candidate for candidate in lines if str(gpio) in candidate), "")
         # libgpiod exposes the requested logical output value as active/inactive;
         # active-high is polarity metadata and must not itself be treated as HIGH.
-        state = "HIGH" if "output active" in line else "LOW" if "output inactive" in line else "INACTIVE" if " input" in f" {line}" else "UNKNOWN"
+        fields = line.split()
+        state = "HIGH" if "output active" in line else "LOW" if "output inactive" in line else "INACTIVE" if fields and fields[-1] == "input" else "UNKNOWN"
         states.append((name, gpio, state))
     return states
 
