@@ -78,6 +78,20 @@ class DiagnosticProcess:
         return self.returncode
 
 
+class FakeOutputLock:
+    def acquire(self) -> int:
+        return 42
+
+    def release(self) -> None:
+        pass
+
+    def __enter__(self) -> "FakeOutputLock":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        pass
+
+
 class HardwareAgentTests(unittest.TestCase):
     def test_systemd_unit_limits_gpio_device_and_no_arbitrary_command(self) -> None:
         unit = (Path(__file__).parents[1] / "systemd" / "pcdog-hardware-agent.service").read_text()
@@ -130,7 +144,7 @@ class HardwareAgentTests(unittest.TestCase):
         popen = Mock(side_effect=processes)
         killed: list[tuple[int, int]] = []
         with TemporaryDirectory() as directory:
-            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, sig: killed.append((pid, sig)), lambda _: None)  # type: ignore[arg-type]
+            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, sig: killed.append((pid, sig)), lambda _: None, FakeOutputLock, lambda _: True)  # type: ignore[arg-type]
             controls.on()
             self.assertEqual(
                 [call.args[0] for call in popen.call_args_list],
@@ -146,7 +160,7 @@ class HardwareAgentTests(unittest.TestCase):
         popen = Mock(side_effect=[DiagnosticProcess(101), DiagnosticProcess(102, returncode=1, stderr="busy")])
         killed: list[int] = []
         with TemporaryDirectory() as directory:
-            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, _: killed.append(pid), lambda _: None)  # type: ignore[arg-type]
+            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, _: killed.append(pid), lambda _: None, FakeOutputLock, lambda _: True)  # type: ignore[arg-type]
             with self.assertRaises(DiagnosticControlsError):
                 controls.on()
         self.assertEqual(killed, [101])
@@ -162,7 +176,7 @@ class HardwareAgentTests(unittest.TestCase):
         process = Mock(returncode=0)
         process.communicate.return_value = ("", "")
         popen = Mock(return_value=process)
-        GpioPulseExecutor(ControlPolarity.ACTIVE_HIGH, popen).pulse(POWER_CONTROL_GPIO, 200)
+        GpioPulseExecutor(ControlPolarity.ACTIVE_HIGH, popen, FakeOutputLock).pulse(POWER_CONTROL_GPIO, 200)
         self.assertEqual(
             popen.call_args.args[0],
             ["gpioset", "--chip", "gpiochip0", "--consumer", "pcdog-hardware-agent", "--toggle", "200ms,0", "16=active"],
@@ -173,7 +187,7 @@ class HardwareAgentTests(unittest.TestCase):
         process = Mock(returncode=0)
         process.communicate.return_value = ("", "")
         popen = Mock(return_value=process)
-        GpioPulseExecutor(ControlPolarity.ACTIVE_LOW, popen).pulse(RESET_CONTROL_GPIO, 200)
+        GpioPulseExecutor(ControlPolarity.ACTIVE_LOW, popen, FakeOutputLock).pulse(RESET_CONTROL_GPIO, 200)
         self.assertIn("--active-low", popen.call_args.args[0])
         self.assertIn("17=active", popen.call_args.args[0])
 
@@ -182,7 +196,7 @@ class HardwareAgentTests(unittest.TestCase):
         process.communicate.side_effect = [subprocess.TimeoutExpired("gpioset", 1), ("", "")]
         popen = Mock(return_value=process)
         with self.assertRaises(PulseError):
-            GpioPulseExecutor(ControlPolarity.ACTIVE_HIGH, popen).pulse(POWER_CONTROL_GPIO, 50)
+            GpioPulseExecutor(ControlPolarity.ACTIVE_HIGH, popen, FakeOutputLock).pulse(POWER_CONTROL_GPIO, 50)
         process.terminate.assert_called_once()
 
     def test_invalid_duration_fails_closed_without_gpio_action(self) -> None:

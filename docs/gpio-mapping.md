@@ -12,8 +12,8 @@ Human Authority. Numery fizycznych pinów 40-pinowego headera zweryfikowano z
 
 | Signal | Direction względem Raspberry Pi | BCM GPIO | Physical pin | Rola elektryczna | Physical wiring confirmed |
 | --- | --- | --- | --- | --- | --- |
-| POWER control | OUTPUT | GPIO16 | 36 | GPIO output → transoptor → F_PANEL POWER switch | NOT TESTED |
-| RESET control | OUTPUT | GPIO17 | 11 | GPIO output → transoptor → F_PANEL RESET switch | NOT TESTED |
+| POWER control | OUTPUT | GPIO16 | 36 | GPIO → 680 Ω → LED transoptora → GND | ACTIVE-HIGH CONFIRMED |
+| RESET control | OUTPUT | GPIO17 | 11 | GPIO → 680 Ω → LED transoptora → GND | ACTIVE-HIGH CONFIRMED |
 | HDD LED monitor | INPUT | GPIO19 | 35 | transoptor → GPIO input | NOT TESTED |
 | POWER LED monitor | INPUT | GPIO20 | 38 | transoptor → GPIO input | NOT TESTED |
 
@@ -84,18 +84,25 @@ jeden odpowiedni semantyczny impuls i odczytuje GPIO19/GPIO20 podczas jego
 trwania. Nie ma argumentu GPIO ani czasu i nie ma bezpośredniego dostępu do
 `/dev/gpiochip0`.
 
-### Diagnostyka serwisowa transoptorów
+### Diagnostyka serwisowa GPIO
 
 Wyłącznie do kontrolowanej diagnostyki fizycznej, poza Web API i socketem
-hardware-agenta, root może uruchomić `/opt/pcdog/bin/pcdog-diagnostic-controls
-on`. Narzędzie ma dokładnie dwa polecenia: `on` (`diagnostic_controls_on`) i
-`off` (`diagnostic_controls_off`); nie przyjmuje GPIO, czasu ani polaryzacji.
-`on` utrzymuje jednocześnie tylko GPIO16 i GPIO17 w stanie ACTIVE/HIGH przez
-procesy `gpioset`, bez automatycznego timeoutu. `off` kończy oba procesy i
-zwalnia linie. Jest to tryb serwisowy dla stanowiska, na którym PC nie jest
-podłączony do linii POWER/RESET; nie zastępuje ani nie rozszerza
-`pulse_power`/`pulse_reset`.
+hardware-agenta, root uruchamia `pcdog-test` (instalowane także jako
+`/opt/pcdog/bin/pcdog-test`). Przyjmuje tylko
+`status`, `inputs`, `outputs`, `power-on`, `power-off`, `reset-on`,
+`reset-off`, `all-on` i `all-off`; nie przyjmuje GPIO, czasu ani polaryzacji.
+GPIO16 i GPIO17 są zawsze ACTIVE-HIGH. Polecenia `*-on` utrzymują stan aż do
+odpowiedniego `*-off`; `all-off` kończy oba procesy `gpioset` i zwalnia linie.
+`status` używa wyłącznie `gpioinfo`, więc nie zmienia konfiguracji GPIO.
 
-LIVE TESTED: brak. Physical wiring GPIO19/GPIO20: **NOT TESTED**. Polaryzacja
-GPIO16/GPIO17: **UNCONFIRMED**. POWER i RESET są operacjami podwyższonego
-ryzyka; to mapowanie nie upoważnia do ich wykonania.
+Własność GPIO16/17 jest synchronizowana wspólną blokadą
+`/run/pcdog-gpio-control.lock`: proces `gpioset` diagnostyki dziedziczy ją na
+czas utrzymywania wyjścia, a hardware-agent trzyma ją przez ograniczony
+impuls. Dzięki temu agent odrzuca konflikt jako `OUTPUT_BUSY`, zamiast dwóch
+procesów próbujących przejąć tę samą linię. Poprzednie root-only
+`pcdog-diagnostic-controls on|off` pozostaje zgodnym aliasem odpowiednio dla
+`pcdog-test all-on|all-off`; nie stanowi drugiego modelu własności.
+
+LIVE TESTED: brak. Physical wiring GPIO19/GPIO20: **NOT TESTED**. POWER i
+RESET są operacjami podwyższonego ryzyka; to mapowanie nie upoważnia do ich
+wykonania.

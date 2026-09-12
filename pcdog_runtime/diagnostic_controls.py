@@ -1,10 +1,4 @@
-"""Lokalne, root-only podtrzymanie dwóch wyjść diagnostycznych PcDog.
-
-To narzędzie nie jest częścią socketu hardware-agenta ani Web API. Udostępnia
-wyłącznie dwa polecenia: ``diagnostic_controls_on`` i
-``diagnostic_controls_off`` (w CLI: ``on`` i ``off``). Nie przyjmuje numerów
-GPIO, czasu ani polaryzacji od wywołującego.
-"""
+"""Lokalna, root-only diagnostyka czterech stałych sygnałów PcDog."""
 
 from __future__ import annotations
 
@@ -16,12 +10,15 @@ import subprocess
 import time
 from typing import Callable, Sequence
 
-from .hardware_agent import ControlPolarity, GPIO_CHIP, POWER_CONTROL_GPIO, RESET_CONTROL_GPIO
+from .hardware_agent import ControlPolarity, GPIO_CHIP, GpioInputReader, POWER_CONTROL_GPIO, RESET_CONTROL_GPIO
+from .gpio_ownership import OutputLock, OutputLockBusyError
 
 
 DIAGNOSTIC_GPIOS = (POWER_CONTROL_GPIO, RESET_CONTROL_GPIO)
-DIAGNOSTIC_CONSUMER = "pcdog-diagnostic-controls"
+DIAGNOSTIC_CONSUMER = "pcdog-test"
 DEFAULT_STATE_DIRECTORY = Path("/run/pcdog-diagnostic-controls")
+HDD_MONITOR_GPIO = 19
+POWER_MONITOR_GPIO = 20
 
 
 class DiagnosticControlsError(RuntimeError):
@@ -41,26 +38,57 @@ class DiagnosticControls:
         popen: Callable[..., subprocess.Popen[str]] = subprocess.Popen,
         kill: Callable[[int, int], None] = os.kill,
         sleep: Callable[[float], None] = time.sleep,
+        lock_factory=OutputLock,
+        is_owner: Callable[[int], bool] | None = None,
     ) -> None:
         self._state_directory = state_directory
         self._popen = popen
         self._kill = kill
         self._sleep = sleep
+        self._lock_factory = lock_factory
+        self._is_owner = is_owner or self._is_diagnostic_owner
 
     def on(self) -> None:
-        """Uruchamia oba kanały ACTIVE-HIGH i pozostawia je załączone."""
-        self.off()
+        self.all_on()
+
+    def all_on(self) -> None:
+        self._set_active(DIAGNOSTIC_GPIOS)
+
+    def power_on(self) -> None:
+        self._set_active((POWER_CONTROL_GPIO,))
+
+    def reset_on(self) -> None:
+        self._set_active((RESET_CONTROL_GPIO,))
+
+    def power_off(self) -> None:
+        self._stop_gpios((POWER_CONTROL_GPIO,))
+
+    def reset_off(self) -> None:
+        self._stop_gpios((RESET_CONTROL_GPIO,))
+
+    def _set_active(self, gpios: Sequence[int]) -> None:
+        """Aktywuje wskazane stałe linie bez naruszania drugiego kanału."""
         started: list[int] = []
+        lock: OutputLock | None = None
         try:
             self._state_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             self._state_directory.chmod(0o700)
-            for gpio in DIAGNOSTIC_GPIOS:
+            active = self._active_gpios()
+            if not active:
+                lock = self._lock_factory()
+                lock.acquire()
+            for gpio in gpios:
+                if gpio in active:
+                    continue
+                kwargs: dict[str, object] = {
+                    "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+                    "stderr": subprocess.PIPE, "text": True,
+                }
+                if lock is not None:
+                    kwargs["pass_fds"] = (lock.acquire(),)
                 process = self._popen(
                     self._command(gpio),
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    text=True,
+                    **kwargs,
                 )
                 self._sleep(0.05)
                 if process.poll() is not None:
@@ -72,6 +100,9 @@ class DiagnosticControls:
         except BaseException:
             self._stop_gpios(started)
             raise
+        finally:
+            if lock is not None:
+                lock.release()
 
     def off(self) -> None:
         """Bezwarunkowo kończy znane procesy właścicieli obu wyjść."""
@@ -81,6 +112,8 @@ class DiagnosticControls:
                 self._state_directory.rmdir()
             except OSError:
                 pass
+
+    all_off = off
 
     @staticmethod
     def _command(gpio: int) -> list[str]:
@@ -101,6 +134,9 @@ class DiagnosticControls:
                 pid = int(path.read_text(encoding="ascii").strip())
             except (OSError, ValueError):
                 continue
+            if not self._is_owner(pid):
+                path.unlink(missing_ok=True)
+                continue
             try:
                 self._kill(pid, signal.SIGTERM)
             except ProcessLookupError:
@@ -108,24 +144,91 @@ class DiagnosticControls:
             finally:
                 path.unlink(missing_ok=True)
 
+    def _active_gpios(self) -> set[int]:
+        active: set[int] = set()
+        for gpio in DIAGNOSTIC_GPIOS:
+            try:
+                pid = int(self._pid_path(gpio).read_text(encoding="ascii").strip())
+                if not self._is_owner(pid):
+                    raise ProcessLookupError
+            except (OSError, ValueError):
+                self._pid_path(gpio).unlink(missing_ok=True)
+            else:
+                active.add(gpio)
+        return active
+
+    @staticmethod
+    def _is_diagnostic_owner(pid: int) -> bool:
+        """Nigdy nie wysyłaj SIGTERM do PID odziedziczonego przez inny proces."""
+        try:
+            command = Path(f"/proc/{pid}/cmdline").read_bytes()
+        except OSError:
+            return False
+        return b"gpioset" in command and b"--consumer" in command and (
+            DIAGNOSTIC_CONSUMER.encode() in command or b"pcdog-diagnostic-controls" in command
+        )
+
 
 def main(arguments: Sequence[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="PcDog: root-only GPIO16/GPIO17 diagnostic controls")
-    parser.add_argument("operation", choices=("on", "off"), help="on = diagnostic_controls_on; off = diagnostic_controls_off")
+    parser = argparse.ArgumentParser(description="PcDog: root-only GPIO diagnostics")
+    parser.add_argument("operation", choices=("status", "inputs", "outputs", "power-on", "power-off", "reset-on", "reset-off", "all-on", "all-off", "on", "off"))
     args = parser.parse_args(arguments)
     if os.geteuid() != 0:
         parser.error("to narzędzie diagnostyczne wymaga root")
     controls = DiagnosticControls()
+    operation = {"on": "all-on", "off": "all-off"}.get(args.operation, args.operation)
     try:
-        if args.operation == "on":
-            controls.on()
-            print("diagnostic_controls_on: GPIO16=ACTIVE/HIGH GPIO17=ACTIVE/HIGH")
-        else:
-            controls.off()
-            print("diagnostic_controls_off: GPIO16=inactive GPIO17=inactive")
-    except DiagnosticControlsError as error:
+        if operation == "power-on": controls.power_on()
+        elif operation == "power-off": controls.power_off()
+        elif operation == "reset-on": controls.reset_on()
+        elif operation == "reset-off": controls.reset_off()
+        elif operation == "all-on": controls.all_on()
+        elif operation == "all-off": controls.all_off()
+    except (DiagnosticControlsError, OutputLockBusyError) as error:
         controls.off()
         parser.error(str(error))
+    try:
+        print_status("outputs" if operation.endswith(("-on", "-off")) else operation)
+    except DiagnosticControlsError as error:
+        parser.error(str(error))
+
+
+def print_status(operation: str) -> None:
+    """Tylko odczyty: ``gpioget`` dla wejść i ``gpioinfo`` dla wyjść."""
+    output_signals = (("POWER_CONTROL", POWER_CONTROL_GPIO), ("RESET_CONTROL", RESET_CONTROL_GPIO))
+    input_signals = (("HDD_MONITOR", HDD_MONITOR_GPIO), ("POWER_MONITOR", POWER_MONITOR_GPIO))
+    if operation in {"status", "outputs"}:
+        for name, gpio, state in _read_output_levels(output_signals):
+            print(f"{name:<15} GPIO{gpio:<2}  {state}")
+    if operation in {"status", "inputs"}:
+        for name, gpio, state in _read_input_levels(input_signals):
+            print(f"{name:<15} GPIO{gpio:<2}  {state}")
+
+
+def _read_input_levels(signals: Sequence[tuple[str, int]]) -> list[tuple[str, int, str]]:
+    try:
+        result = subprocess.run(["gpioget", "--numeric", "--chip", GPIO_CHIP, *[str(gpio) for _, gpio in signals]], check=True, capture_output=True, text=True, timeout=1.0)
+        hdd, power = GpioInputReader._parse_values(result.stdout)
+        values = (hdd, power)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        raise DiagnosticControlsError("nie udało się odczytać wejść GPIO19/GPIO20") from error
+    return [(name, gpio, "HIGH" if value else "LOW") for (name, gpio), value in zip(signals, values, strict=True)]
+
+
+def _read_output_levels(signals: Sequence[tuple[str, int]]) -> list[tuple[str, int, str]]:
+    try:
+        result = subprocess.run(["gpioinfo", "--numeric", "--chip", GPIO_CHIP, *[str(gpio) for _, gpio in signals]], check=True, capture_output=True, text=True, timeout=1.0)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise DiagnosticControlsError("nie udało się odczytać wyjść GPIO16/GPIO17") from error
+    lines = result.stdout.splitlines()
+    states = []
+    for name, gpio in signals:
+        line = next((candidate for candidate in lines if str(gpio) in candidate), "")
+        # libgpiod exposes the requested logical output value as active/inactive;
+        # active-high is polarity metadata and must not itself be treated as HIGH.
+        state = "HIGH" if "output active" in line else "LOW" if "output inactive" in line else "INACTIVE" if " input" in f" {line}" else "UNKNOWN"
+        states.append((name, gpio, state))
+    return states
 
 
 if __name__ == "__main__":

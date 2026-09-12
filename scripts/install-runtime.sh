@@ -18,6 +18,8 @@ readonly SYSTEM_AGENT_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-system-agent"
 readonly NETWORK_AGENT_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-network-agent"
 readonly HARDWARE_AGENT_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-hardware-agent"
 readonly DIAGNOSTIC_CONTROLS_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-diagnostic-controls"
+readonly PCDOG_TEST_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-test"
+readonly PCDOG_TEST_COMMAND='/usr/local/sbin/pcdog-test'
 readonly RUNTIME_LIBRARY_DIRECTORY="$RUNTIME_DIRECTORY/lib"
 readonly RUNTIME_PACKAGE_DIRECTORY="$RUNTIME_LIBRARY_DIRECTORY/pcdog_runtime"
 readonly RUNTIME_WEB_PANEL_DIRECTORY="$RUNTIME_PACKAGE_DIRECTORY/web_panel"
@@ -37,6 +39,7 @@ readonly SYSTEM_AGENT_SOURCE="$project_dir/runtime/pcdog-system-agent.sh"
 readonly NETWORK_AGENT_SOURCE="$project_dir/runtime/pcdog-network-agent.sh"
 readonly HARDWARE_AGENT_SOURCE="$project_dir/runtime/pcdog-hardware-agent.sh"
 readonly DIAGNOSTIC_CONTROLS_SOURCE="$project_dir/runtime/pcdog-diagnostic-controls.sh"
+readonly PCDOG_TEST_SOURCE="$project_dir/runtime/pcdog-test.sh"
 readonly SERVICE_SOURCE="$project_dir/systemd/$SERVICE_NAME"
 readonly SYSTEM_AGENT_SERVICE_SOURCE="$project_dir/systemd/$SYSTEM_AGENT_SERVICE_NAME"
 readonly NETWORK_AGENT_SERVICE_SOURCE="$project_dir/systemd/$NETWORK_AGENT_SERVICE_NAME"
@@ -47,6 +50,7 @@ readonly -a PYTHON_PACKAGE_FILES=(
   'event_store.py'
   'hardware_agent.py'
   'diagnostic_controls.py'
+  'gpio_ownership.py'
   'hardware_agent_client.py'
   'hardware_loopback.py'
   'input_monitor.py'
@@ -129,6 +133,8 @@ runtime_layout_is_correct() {
   file_matches "$NETWORK_AGENT_SOURCE" "$NETWORK_AGENT_BINARY" 755 || return 1
   file_matches "$HARDWARE_AGENT_SOURCE" "$HARDWARE_AGENT_BINARY" 755 || return 1
   file_matches "$DIAGNOSTIC_CONTROLS_SOURCE" "$DIAGNOSTIC_CONTROLS_BINARY" 700 || return 1
+  file_matches "$PCDOG_TEST_SOURCE" "$PCDOG_TEST_BINARY" 700 || return 1
+  file_matches "$PCDOG_TEST_SOURCE" "$PCDOG_TEST_COMMAND" 700 || return 1
   file_matches "$SERVICE_SOURCE" "$SERVICE_PATH" 644 || return 1
   file_matches "$SYSTEM_AGENT_SERVICE_SOURCE" "$SYSTEM_AGENT_SERVICE_PATH" 644 || return 1
   file_matches "$NETWORK_AGENT_SERVICE_SOURCE" "$NETWORK_AGENT_SERVICE_PATH" 644 || return 1
@@ -185,6 +191,7 @@ install --directory --owner=root --group=root --mode=755 \
   "$RUNTIME_LIBRARY_DIRECTORY" \
   "$RUNTIME_PACKAGE_DIRECTORY" \
   "$RUNTIME_WEB_PANEL_DIRECTORY"
+install --directory --owner=root --group=root --mode=755 /usr/local/sbin
 
 install_if_changed() {
   local source_path="$1"
@@ -235,6 +242,12 @@ if install_if_changed "$HARDWARE_AGENT_SOURCE" "$HARDWARE_AGENT_BINARY" 755; the
   runtime_changed=true
 fi
 if install_if_changed "$DIAGNOSTIC_CONTROLS_SOURCE" "$DIAGNOSTIC_CONTROLS_BINARY" 700; then
+  runtime_changed=true
+fi
+if install_if_changed "$PCDOG_TEST_SOURCE" "$PCDOG_TEST_BINARY" 700; then
+  runtime_changed=true
+fi
+if install_if_changed "$PCDOG_TEST_SOURCE" "$PCDOG_TEST_COMMAND" 700; then
   runtime_changed=true
 fi
 for relative_path in "${PYTHON_PACKAGE_FILES[@]}"; do

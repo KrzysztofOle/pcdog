@@ -19,6 +19,7 @@ from typing import Sequence
 
 from .inputs import InputReading
 from .models import HddActivity, PowerLedState
+from .gpio_ownership import OutputLock, OutputLockBusyError
 
 
 DEFAULT_SOCKET_PATH = Path("/run/pcdog-hardware-agent/agent.sock")
@@ -105,9 +106,10 @@ class GpioPulseExecutor:
     może ono dalej utrzymywać aktywnego wyjścia.
     """
 
-    def __init__(self, polarity: ControlPolarity, popen=subprocess.Popen) -> None:
+    def __init__(self, polarity: ControlPolarity, popen=subprocess.Popen, lock_factory=OutputLock) -> None:
         self._polarity = polarity
         self._popen = popen
+        self._lock_factory = lock_factory
 
     def pulse(self, gpio: int, duration_ms: int) -> None:
         command = ["gpioset", "--chip", GPIO_CHIP, "--consumer", GPIOSET_CONSUMER]
@@ -117,10 +119,13 @@ class GpioPulseExecutor:
 
         process = None
         try:
-            process = self._popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            _, stderr = process.communicate(timeout=(duration_ms / 1000) + 1.0)
-            if process.returncode != 0:
-                raise PulseError(f"gpioset zakończył się kodem {process.returncode}: {stderr.strip()}")
+            with self._lock_factory():
+                process = self._popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                _, stderr = process.communicate(timeout=(duration_ms / 1000) + 1.0)
+                if process.returncode != 0:
+                    raise PulseError(f"gpioset zakończył się kodem {process.returncode}: {stderr.strip()}")
+        except OutputLockBusyError as error:
+            raise OutputBusyError("Wyjścia zajęte przez diagnostykę lokalną") from error
         except subprocess.TimeoutExpired as error:
             if process is not None:
                 self._stop_process(process)
