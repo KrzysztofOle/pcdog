@@ -54,13 +54,20 @@ class GpioInputReader:
 
     @staticmethod
     def _parse_values(output: str) -> tuple[bool, bool]:
-        # gpiod v2 emits e.g. "19=active 20=inactive" with --numeric.
-        fields = dict(item.split("=", 1) for item in output.split() if "=" in item)
-        if set(fields) != {str(HDD_LED_GPIO), str(POWER_LED_GPIO)}:
+        # libgpiod v2 emits bare values (e.g. "0 1") for numeric offsets;
+        # some versions include the offsets ("19=inactive 20=active").
+        tokens = output.split()
+        fields = dict(item.split("=", 1) for item in tokens if "=" in item)
+        if fields:
+            if set(fields) != {str(HDD_LED_GPIO), str(POWER_LED_GPIO)}:
+                raise ValueError("Nieprawidłowa odpowiedź gpioget")
+            ordered_values = [fields[str(HDD_LED_GPIO)], fields[str(POWER_LED_GPIO)]]
+        elif len(tokens) == 2:
+            ordered_values = tokens
+        else:
             raise ValueError("Nieprawidłowa odpowiedź gpioget")
         values = []
-        for gpio in (HDD_LED_GPIO, POWER_LED_GPIO):
-            value = fields[str(gpio)]
+        for value in ordered_values:
             if value not in {"active", "inactive", "1", "0"}:
                 raise ValueError("Nieprawidłowy poziom GPIO")
             values.append(value in {"active", "1"})

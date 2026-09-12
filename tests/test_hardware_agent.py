@@ -32,6 +32,9 @@ class HardwareAgentTests(unittest.TestCase):
         runner.assert_called_once()
         self.assertEqual(runner.call_args.args[0], ["gpioget", "--numeric", "--chip", "gpiochip0", "19", "20"])
 
+    def test_gpio_reader_accepts_libgpiod_v2_numeric_output(self) -> None:
+        self.assertEqual(GpioInputReader._parse_values("0 1\n"), (False, True))
+
     def test_gpio_failure_is_unknown_not_off(self) -> None:
         reading = GpioInputReader(Mock(side_effect=OSError())).read()
         self.assertEqual(reading.power_led, PowerLedState.UNKNOWN)

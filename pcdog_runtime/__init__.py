@@ -6,7 +6,6 @@ wyłącznie lokalnie testowanym API read-only.
 """
 
 from .inputs import FakeInputSource, InputReading, InputSource
-from .hardware_agent_client import HardwareAgentInputSource
 from .input_monitor import InputMonitor, InputMonitorConfig
 from .event_store import (
     EventStore,
@@ -42,7 +41,6 @@ __all__ = [
     "EventType",
     "FakeInputSource",
     "HddActivity",
-    "HardwareAgentInputSource",
     "InputMonitor",
     "InputMonitorConfig",
     "InputReading",
