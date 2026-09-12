@@ -29,7 +29,9 @@ RestrictSUIDSGID=yes
 LockPersonality=yes
 CapabilityBoundingSet=
 DevicePolicy=closed
-DeviceAllow=/dev/gpiochip0 r
+# Linux GPIO character-device requires O_RDWR even when gpioget requests an
+# input line. The agent code exposes only the fixed GPIO19/GPIO20 input read.
+DeviceAllow=/dev/gpiochip0 rw
 
 [Install]
 WantedBy=multi-user.target

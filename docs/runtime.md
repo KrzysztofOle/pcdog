@@ -25,7 +25,10 @@ interpretacji domenowej w State Engine.
 
 IMPLEMENTED (software): `pcdog-hardware-agent.service` działa jako `root:pcdog`
 i odczytuje wyłącznie GPIO19 (HDD LED) oraz GPIO20 (POWER LED), przez
-`gpioget` i `/dev/gpiochip0` w trybie read-only. Jego zamknięty socket Unix
+`gpioget` i `/dev/gpiochip0` w trybie read-only. Linux GPIO character-device
+wymaga deskryptora `O_RDWR` także dla żądania wejścia; dostęp unitu jest mimo
+to ograniczony do jednego urządzenia, a kod agenta wykonuje wyłącznie odczyt.
+Jego zamknięty socket Unix
 przyjmuje tylko `status` i `read_inputs`; nie ma operacji output ani API z
 numerem GPIO od klienta. `pcdog.service` zachowuje `PrivateDevices=yes`, nie
 należy do grupy GPIO i odbiera dane przez socket. Błąd GPIO lub brak agenta

@@ -22,6 +22,14 @@ class Clock:
 
 
 class HardwareAgentTests(unittest.TestCase):
+    def test_systemd_unit_limits_gpio_device_and_has_no_output_command(self) -> None:
+        unit = (Path(__file__).parents[1] / "systemd" / "pcdog-hardware-agent.service").read_text()
+        self.assertIn("DevicePolicy=closed", unit)
+        self.assertIn("DeviceAllow=/dev/gpiochip0 rw", unit)
+        self.assertNotIn("gpioset", unit)
+        self.assertNotIn("GPIO16", unit)
+        self.assertNotIn("GPIO17", unit)
+
     def test_gpio_reader_maps_hdd19_and_power20(self) -> None:
         completed = Mock(stdout="19=active 20=inactive\n")
         runner = Mock(return_value=completed)
