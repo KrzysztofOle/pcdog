@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import unittest
 from unittest.mock import Mock, patch
 
@@ -49,6 +51,28 @@ class BusyLock:
 
 
 class PcDogTestTests(unittest.TestCase):
+    def test_help_variants_return_zero_without_gpio_access(self) -> None:
+        for command in ("help", "--help", "-h"):
+            output = StringIO()
+            with patch("pcdog_runtime.diagnostic_controls.DiagnosticControls") as controls, \
+                 patch("pcdog_runtime.diagnostic_controls.subprocess.run") as run, \
+                 redirect_stdout(output):
+                self.assertIsNone(main([command]))
+            self.assertIn("Usage:", output.getvalue())
+            self.assertIn("GPIO16  POWER CONTROL", output.getvalue())
+            controls.assert_not_called()
+            run.assert_not_called()
+
+    def test_unknown_command_is_rejected_without_gpio_access(self) -> None:
+        error = StringIO()
+        with patch("pcdog_runtime.diagnostic_controls.DiagnosticControls") as controls, \
+             redirect_stderr(error), self.assertRaises(SystemExit) as raised:
+            main(["xyz"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("Unknown command: xyz", error.getvalue())
+        self.assertIn("Run: pcdog-test help", error.getvalue())
+        controls.assert_not_called()
+
     def test_all_supported_commands_parse_and_read_only_commands_do_not_change_gpio(self) -> None:
         read_only = ("status", "inputs", "outputs")
         actions = ("power-on", "power-off", "reset-on", "reset-off", "all-on", "all-off")

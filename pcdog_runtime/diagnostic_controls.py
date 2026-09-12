@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import time
 from typing import Callable, Sequence
 
@@ -19,6 +20,34 @@ DIAGNOSTIC_CONSUMER = "pcdog-test"
 DEFAULT_STATE_DIRECTORY = Path("/run/pcdog-diagnostic-controls")
 HDD_MONITOR_GPIO = 19
 POWER_MONITOR_GPIO = 20
+
+HELP_TEXT = """Usage:
+  pcdog-test <command>
+
+Commands:
+  status       Show all PcDog GPIO states
+  inputs       Show GPIO19/GPIO20 monitor inputs
+  outputs      Show GPIO16/GPIO17 control outputs
+
+  power-on     Set POWER control GPIO16 ACTIVE
+  power-off    Release POWER control GPIO16
+  reset-on     Set RESET control GPIO17 ACTIVE
+  reset-off    Release RESET control GPIO17
+  all-on       Set GPIO16 and GPIO17 ACTIVE
+  all-off      Release GPIO16 and GPIO17
+  help         Show this help
+
+GPIO mapping:
+  GPIO16  POWER CONTROL
+  GPIO17  RESET CONTROL
+  GPIO19  HDD LED MONITOR
+  GPIO20  POWER LED MONITOR
+
+WARNING:
+  power-on, reset-on and all-on are diagnostic commands.
+  Do not use them when PcDog POWER/RESET outputs are connected to a PC
+  unless explicitly intended.
+"""
 
 
 class DiagnosticControlsError(RuntimeError):
@@ -171,8 +200,17 @@ class DiagnosticControls:
 
 def main(arguments: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="PcDog: root-only GPIO diagnostics")
-    parser.add_argument("operation", choices=("status", "inputs", "outputs", "power-on", "power-off", "reset-on", "reset-off", "all-on", "all-off", "on", "off"))
-    args = parser.parse_args(arguments)
+    operations = ("status", "inputs", "outputs", "power-on", "power-off", "reset-on", "reset-off", "all-on", "all-off", "on", "off")
+    parser.add_argument("operation")
+    raw_arguments = list(sys.argv[1:] if arguments is None else arguments)
+    if len(raw_arguments) == 1 and raw_arguments[0] in {"help", "--help", "-h"}:
+        print(HELP_TEXT, end="")
+        return
+    if len(raw_arguments) != 1 or raw_arguments[0] not in operations:
+        unknown = raw_arguments[0] if raw_arguments else ""
+        print(f"Unknown command: {unknown}\nRun: pcdog-test help", file=sys.stderr)
+        raise SystemExit(2)
+    args = parser.parse_args(raw_arguments)
     if os.geteuid() != 0:
         parser.error("to narzędzie diagnostyczne wymaga root")
     controls = DiagnosticControls()
