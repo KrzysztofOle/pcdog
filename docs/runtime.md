@@ -39,6 +39,12 @@ zwraca linię do stanu nieaktywnego i zwalnia ją do INPUT; wyjątek, timeout al
 zamknięcie IPC nie może przedłużyć impulsu. POWER i RESET są wzajemnie
 wykluczone.
 
+Oddzielny root-only program `/opt/pcdog/bin/pcdog-diagnostic-controls` służy
+wyłącznie do lokalnej diagnostyki dwóch transoptorów: `on` utrzymuje GPIO16 i
+GPIO17 ACTIVE/HIGH bez timeoutu, a `off` zwalnia oba. Nie komunikuje się przez
+socket hardware-agenta, nie jest endpointem Web API i nie przyjmuje numeru
+GPIO, czasu ani polaryzacji od wywołującego.
+
 Domyślnie usługa nie otrzymuje `PCDOG_CONTROL_POLARITY`, dlatego GPIO16 i
 GPIO17 pozostają INPUT, a oba polecenia impulsu są odrzucone. Plik opcjonalny
 `/etc/pcdog/hardware-control.conf` jest wczytywany wyłącznie jako

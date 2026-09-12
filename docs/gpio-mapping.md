@@ -84,6 +84,18 @@ jeden odpowiedni semantyczny impuls i odczytuje GPIO19/GPIO20 podczas jego
 trwania. Nie ma argumentu GPIO ani czasu i nie ma bezpośredniego dostępu do
 `/dev/gpiochip0`.
 
+### Diagnostyka serwisowa transoptorów
+
+Wyłącznie do kontrolowanej diagnostyki fizycznej, poza Web API i socketem
+hardware-agenta, root może uruchomić `/opt/pcdog/bin/pcdog-diagnostic-controls
+on`. Narzędzie ma dokładnie dwa polecenia: `on` (`diagnostic_controls_on`) i
+`off` (`diagnostic_controls_off`); nie przyjmuje GPIO, czasu ani polaryzacji.
+`on` utrzymuje jednocześnie tylko GPIO16 i GPIO17 w stanie ACTIVE/HIGH przez
+procesy `gpioset`, bez automatycznego timeoutu. `off` kończy oba procesy i
+zwalnia linie. Jest to tryb serwisowy dla stanowiska, na którym PC nie jest
+podłączony do linii POWER/RESET; nie zastępuje ani nie rozszerza
+`pulse_power`/`pulse_reset`.
+
 LIVE TESTED: brak. Physical wiring GPIO19/GPIO20: **NOT TESTED**. Polaryzacja
 GPIO16/GPIO17: **UNCONFIRMED**. POWER i RESET są operacjami podwyższonego
 ryzyka; to mapowanie nie upoważnia do ich wykonania.

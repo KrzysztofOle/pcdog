@@ -17,6 +17,7 @@ readonly WEB_AUTH_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-web-auth"
 readonly SYSTEM_AGENT_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-system-agent"
 readonly NETWORK_AGENT_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-network-agent"
 readonly HARDWARE_AGENT_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-hardware-agent"
+readonly DIAGNOSTIC_CONTROLS_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-diagnostic-controls"
 readonly RUNTIME_LIBRARY_DIRECTORY="$RUNTIME_DIRECTORY/lib"
 readonly RUNTIME_PACKAGE_DIRECTORY="$RUNTIME_LIBRARY_DIRECTORY/pcdog_runtime"
 readonly RUNTIME_WEB_PANEL_DIRECTORY="$RUNTIME_PACKAGE_DIRECTORY/web_panel"
@@ -35,6 +36,7 @@ readonly WEB_AUTH_SOURCE="$project_dir/runtime/pcdog-web-auth.sh"
 readonly SYSTEM_AGENT_SOURCE="$project_dir/runtime/pcdog-system-agent.sh"
 readonly NETWORK_AGENT_SOURCE="$project_dir/runtime/pcdog-network-agent.sh"
 readonly HARDWARE_AGENT_SOURCE="$project_dir/runtime/pcdog-hardware-agent.sh"
+readonly DIAGNOSTIC_CONTROLS_SOURCE="$project_dir/runtime/pcdog-diagnostic-controls.sh"
 readonly SERVICE_SOURCE="$project_dir/systemd/$SERVICE_NAME"
 readonly SYSTEM_AGENT_SERVICE_SOURCE="$project_dir/systemd/$SYSTEM_AGENT_SERVICE_NAME"
 readonly NETWORK_AGENT_SERVICE_SOURCE="$project_dir/systemd/$NETWORK_AGENT_SERVICE_NAME"
@@ -44,6 +46,7 @@ readonly -a PYTHON_PACKAGE_FILES=(
   '__init__.py'
   'event_store.py'
   'hardware_agent.py'
+  'diagnostic_controls.py'
   'hardware_agent_client.py'
   'hardware_loopback.py'
   'input_monitor.py'
@@ -125,6 +128,7 @@ runtime_layout_is_correct() {
   file_matches "$SYSTEM_AGENT_SOURCE" "$SYSTEM_AGENT_BINARY" 755 || return 1
   file_matches "$NETWORK_AGENT_SOURCE" "$NETWORK_AGENT_BINARY" 755 || return 1
   file_matches "$HARDWARE_AGENT_SOURCE" "$HARDWARE_AGENT_BINARY" 755 || return 1
+  file_matches "$DIAGNOSTIC_CONTROLS_SOURCE" "$DIAGNOSTIC_CONTROLS_BINARY" 700 || return 1
   file_matches "$SERVICE_SOURCE" "$SERVICE_PATH" 644 || return 1
   file_matches "$SYSTEM_AGENT_SERVICE_SOURCE" "$SYSTEM_AGENT_SERVICE_PATH" 644 || return 1
   file_matches "$NETWORK_AGENT_SERVICE_SOURCE" "$NETWORK_AGENT_SERVICE_PATH" 644 || return 1
@@ -228,6 +232,9 @@ if install_if_changed "$NETWORK_AGENT_SOURCE" "$NETWORK_AGENT_BINARY" 755; then
   runtime_changed=true
 fi
 if install_if_changed "$HARDWARE_AGENT_SOURCE" "$HARDWARE_AGENT_BINARY" 755; then
+  runtime_changed=true
+fi
+if install_if_changed "$DIAGNOSTIC_CONTROLS_SOURCE" "$DIAGNOSTIC_CONTROLS_BINARY" 700; then
   runtime_changed=true
 fi
 for relative_path in "${PYTHON_PACKAGE_FILES[@]}"; do

@@ -27,6 +27,11 @@ from pcdog_runtime.hardware_agent import (
     create_server,
     handle_request,
 )
+from pcdog_runtime.diagnostic_controls import (
+    DIAGNOSTIC_CONSUMER,
+    DiagnosticControls,
+    DiagnosticControlsError,
+)
 from pcdog_runtime.hardware_agent_client import HardwareAgentInputSource
 from pcdog_runtime.hardware_loopback import observe_one_pulse
 from pcdog_runtime.read_only_runtime import RuntimeInputMonitor
@@ -60,6 +65,17 @@ class BlockingExecutor(RecordingExecutor):
         self.entered.set()
         self.release.wait(1.0)
         self.completed.set()
+
+
+class DiagnosticProcess:
+    def __init__(self, pid: int, returncode: int | None = None, stderr: str = "") -> None:
+        self.pid = pid
+        self.returncode = returncode
+        self.stderr = Mock()
+        self.stderr.read.return_value = stderr
+
+    def poll(self) -> int | None:
+        return self.returncode
 
 
 class HardwareAgentTests(unittest.TestCase):
@@ -108,6 +124,32 @@ class HardwareAgentTests(unittest.TestCase):
         ):
             self.assertIn(handle_request(request, reader)["status"], {"ACTION_NOT_ENABLED", "INVALID_REQUEST"})
         reader.read.assert_not_called()
+
+    def test_diagnostic_controls_are_local_only_and_fixed_to_active_high_gpio16_gpio17(self) -> None:
+        processes = [DiagnosticProcess(101), DiagnosticProcess(102)]
+        popen = Mock(side_effect=processes)
+        killed: list[tuple[int, int]] = []
+        with TemporaryDirectory() as directory:
+            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, sig: killed.append((pid, sig)), lambda _: None)  # type: ignore[arg-type]
+            controls.on()
+            self.assertEqual(
+                [call.args[0] for call in popen.call_args_list],
+                [
+                    ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "16=active"],
+                    ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "17=active"],
+                ],
+            )
+            controls.off()
+        self.assertEqual([pid for pid, _ in killed], [101, 102])
+
+    def test_diagnostic_start_failure_releases_already_started_channel(self) -> None:
+        popen = Mock(side_effect=[DiagnosticProcess(101), DiagnosticProcess(102, returncode=1, stderr="busy")])
+        killed: list[int] = []
+        with TemporaryDirectory() as directory:
+            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, _: killed.append(pid), lambda _: None)  # type: ignore[arg-type]
+            with self.assertRaises(DiagnosticControlsError):
+                controls.on()
+        self.assertEqual(killed, [101])
 
     def test_power_and_reset_pulses_use_only_fixed_lines_and_default_duration(self) -> None:
         executor = RecordingExecutor()
