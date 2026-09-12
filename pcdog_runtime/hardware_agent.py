@@ -39,7 +39,7 @@ class GpioInputReader:
     def read(self) -> InputReading:
         try:
             result = self._runner(
-                ["gpioget", "--numeric", GPIO_CHIP, str(HDD_LED_GPIO), str(POWER_LED_GPIO)],
+                ["gpioget", "--numeric", "--chip", GPIO_CHIP, str(HDD_LED_GPIO), str(POWER_LED_GPIO)],
                 check=True, capture_output=True, text=True, timeout=1.0,
             )
             hdd_value, power_value = self._parse_values(result.stdout)
