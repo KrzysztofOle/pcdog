@@ -114,7 +114,7 @@ class PcDogTestTests(unittest.TestCase):
         with patch("pcdog_runtime.diagnostic_controls.subprocess.run", side_effect=[output_completed, input_completed]) as run, \
              patch("builtins.print") as output:
             print_status("status")
-        self.assertEqual(run.call_args_list[0].args[0], ["gpioinfo", "--numeric", "--chip", "gpiochip0", "16", "17"])
+        self.assertEqual(run.call_args_list[0].args[0], ["gpioinfo", "--chip", "gpiochip0", "16", "17"])
         self.assertEqual(run.call_args_list[1].args[0], ["gpioget", "--numeric", "--chip", "gpiochip0", "19", "20"])
         self.assertEqual(output.call_count, 4)
 

@@ -217,7 +217,7 @@ def _read_input_levels(signals: Sequence[tuple[str, int]]) -> list[tuple[str, in
 
 def _read_output_levels(signals: Sequence[tuple[str, int]]) -> list[tuple[str, int, str]]:
     try:
-        result = subprocess.run(["gpioinfo", "--numeric", "--chip", GPIO_CHIP, *[str(gpio) for _, gpio in signals]], check=True, capture_output=True, text=True, timeout=1.0)
+        result = subprocess.run(["gpioinfo", "--chip", GPIO_CHIP, *[str(gpio) for _, gpio in signals]], check=True, capture_output=True, text=True, timeout=1.0)
     except (OSError, subprocess.SubprocessError) as error:
         raise DiagnosticControlsError("nie udało się odczytać wyjść GPIO16/GPIO17") from error
     lines = result.stdout.splitlines()
