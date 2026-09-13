@@ -35,6 +35,10 @@ Oba wejścia są open-collector i aktywne-nisko. Unit hardware-agenta przed
 startem ustawia `GPIO19` i `GPIO20` jako `input pull-up`; każdy odczyt używa
 również `gpioget --bias pull-up --active-low`, więc niski poziom fizyczny jest
 przekazywany jako aktywny POWER LED/HDD, a wysoki jako nieaktywny.
+Polecenia `pinctrl` w `ExecStartPre` mają prefiks systemd `+`, ponieważ narzędzie
+wymaga dostępu blokowanego przez `ProtectKernelTunables`; wyjątek dotyczy tylko
+tych dwóch jednorazowych konfiguracji wejść, a działający agent zachowuje
+sandbox.
 
 Socket przyjmuje zawsze tylko `status` i `read_inputs`, a przy jawnie włączonym
 sterowaniu dodatkowo wyłącznie `pulse_power` oraz `pulse_reset`. Nie ma API z

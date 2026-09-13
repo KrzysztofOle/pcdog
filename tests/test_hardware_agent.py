@@ -124,8 +124,8 @@ class HardwareAgentTests(unittest.TestCase):
 
     def test_open_collector_input_configuration_is_active_low_with_pull_up(self) -> None:
         unit = (Path(__file__).parents[1] / "systemd" / "pcdog-hardware-agent.service").read_text()
-        self.assertIn("ExecStartPre=/usr/bin/pinctrl set 19 ip pu", unit)
-        self.assertIn("ExecStartPre=/usr/bin/pinctrl set 20 ip pu", unit)
+        self.assertIn("ExecStartPre=+/usr/bin/pinctrl set 19 ip pu", unit)
+        self.assertIn("ExecStartPre=+/usr/bin/pinctrl set 20 ip pu", unit)
         completed = Mock(stdout="20=active 19=inactive\n")
         reading = GpioInputReader(Mock(return_value=completed)).read()
         self.assertEqual(reading.hdd_activity, HddActivity.ACTIVE)

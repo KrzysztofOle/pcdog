@@ -7,8 +7,10 @@ After=local-fs.target
 Type=simple
 User=root
 Group=pcdog
-ExecStartPre=/usr/bin/pinctrl set 19 ip pu
-ExecStartPre=/usr/bin/pinctrl set 20 ip pu
+# The `+` prefix lets only this one-shot pinctrl setup bypass
+# ProtectKernelTunables; the long-running agent remains sandboxed.
+ExecStartPre=+/usr/bin/pinctrl set 19 ip pu
+ExecStartPre=+/usr/bin/pinctrl set 20 ip pu
 ExecStart=/opt/pcdog/bin/pcdog-hardware-agent
 EnvironmentFile=-/etc/pcdog/hardware-control.conf
 Restart=on-failure
