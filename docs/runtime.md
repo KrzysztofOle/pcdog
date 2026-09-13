@@ -42,8 +42,10 @@ wykluczone.
 Oddzielny root-only program `/opt/pcdog/bin/pcdog-test` służy wyłącznie do
 lokalnej diagnostyki GPIO17/18/19/20. Nie komunikuje się przez socket
 hardware-agenta, nie jest endpointem Web API i nie przyjmuje numeru GPIO,
-czasu ani polaryzacji od wywołującego. GPIO17/18 są stale ACTIVE-HIGH;
-`all-off` zwalnia oba wyjścia. Wspólna blokada `/run/pcdog-gpio-control.lock`
+czasu ani polaryzacji od wywołującego. GPIO17/18 są stale ACTIVE-HIGH; każde
+`*-off` wymusza `pinctrl set <GPIO> op dl` przed zwolnieniem procesu `gpioset`,
+a `all-off` ustawia LOW na obu wyjściach przed zwolnieniem któregokolwiek.
+Wspólna blokada `/run/pcdog-gpio-control.lock`
 uniemożliwia równoczesną własność wyjść przez diagnostykę i impuls agenta.
 `pcdog-diagnostic-controls on|off` pozostaje zgodnym aliasem dla
 `pcdog-test all-on|all-off`.

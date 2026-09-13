@@ -38,11 +38,11 @@ Commands:
   outputs      Show GPIO17/GPIO18 control outputs
 
   power-on     Set POWER control GPIO17 ACTIVE
-  power-off    Release POWER control GPIO17
+  power-off    Set POWER control GPIO17 INACTIVE, then release it
   reset-on     Set RESET control GPIO18 ACTIVE
-  reset-off    Release RESET control GPIO18
+  reset-off    Set RESET control GPIO18 INACTIVE, then release it
   all-on       Set GPIO17 and GPIO18 ACTIVE
-  all-off      Release GPIO17 and GPIO18
+  all-off      Set GPIO17 and GPIO18 INACTIVE, then release them
   help         Show this help
 
 GPIO mapping:
@@ -77,6 +77,7 @@ class DiagnosticControls:
         sleep: Callable[[float], None] = time.sleep,
         lock_factory=OutputLock,
         is_owner: Callable[[int], bool] | None = None,
+        runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     ) -> None:
         self._state_directory = state_directory
         self._popen = popen
@@ -84,6 +85,7 @@ class DiagnosticControls:
         self._sleep = sleep
         self._lock_factory = lock_factory
         self._is_owner = is_owner or self._is_diagnostic_owner
+        self._runner = runner
 
     def on(self) -> None:
         self.all_on()
@@ -142,7 +144,7 @@ class DiagnosticControls:
                 lock.release()
 
     def off(self) -> None:
-        """Bezwarunkowo kończy znane procesy właścicieli obu wyjść."""
+        """Ustawia LOW, a następnie kończy znane procesy właścicieli wyjść."""
         self._stop_gpios(DIAGNOSTIC_GPIOS)
         if self._state_directory.exists():
             try:
@@ -165,6 +167,7 @@ class DiagnosticControls:
         return self._state_directory / f"gpio{gpio}.pid"
 
     def _stop_gpios(self, gpios: Sequence[int]) -> None:
+        owners: list[tuple[int, int, Path]] = []
         for gpio in gpios:
             path = self._pid_path(gpio)
             try:
@@ -174,12 +177,35 @@ class DiagnosticControls:
             if not self._is_owner(pid):
                 path.unlink(missing_ok=True)
                 continue
+            owners.append((gpio, pid, path))
+
+        # Do not release any line until every requested line is physically
+        # inactive. A released line can retain its previous electrical level.
+        for gpio, _, _ in owners:
+            self._set_inactive(gpio)
+
+        for _, pid, path in owners:
             try:
                 self._kill(pid, signal.SIGTERM)
             except ProcessLookupError:
                 pass
             finally:
                 path.unlink(missing_ok=True)
+
+    def _set_inactive(self, gpio: int) -> None:
+        """Wymusza fizyczne LOW przed zwolnieniem właściciela linii."""
+        try:
+            self._runner(
+                ["pinctrl", "set", str(gpio), "op", "dl"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=1.0,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise DiagnosticControlsError(
+                f"nie udało się ustawić GPIO{gpio} w stanie INACTIVE/LOW; wyjście pozostaje zajęte"
+            ) from error
 
     def _active_gpios(self) -> set[int]:
         active: set[int] = set()
@@ -231,7 +257,6 @@ def main(arguments: Sequence[str] | None = None) -> None:
         elif operation == "all-on": controls.all_on()
         elif operation == "all-off": controls.all_off()
     except (DiagnosticControlsError, OutputLockBusyError) as error:
-        controls.off()
         parser.error(str(error))
     try:
         print_status("outputs" if operation.endswith(("-on", "-off")) else operation)

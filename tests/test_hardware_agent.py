@@ -151,8 +151,9 @@ class HardwareAgentTests(unittest.TestCase):
         processes = [DiagnosticProcess(101), DiagnosticProcess(102)]
         popen = Mock(side_effect=processes)
         killed: list[tuple[int, int]] = []
+        runner = Mock(return_value=Mock())
         with TemporaryDirectory() as directory:
-            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, sig: killed.append((pid, sig)), lambda _: None, FakeOutputLock, lambda _: True)  # type: ignore[arg-type]
+            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, sig: killed.append((pid, sig)), lambda _: None, FakeOutputLock, lambda _: True, runner)  # type: ignore[arg-type]
             controls.on()
             self.assertEqual(
                 [call.args[0] for call in popen.call_args_list],
@@ -167,8 +168,9 @@ class HardwareAgentTests(unittest.TestCase):
     def test_diagnostic_start_failure_releases_already_started_channel(self) -> None:
         popen = Mock(side_effect=[DiagnosticProcess(101), DiagnosticProcess(102, returncode=1, stderr="busy")])
         killed: list[int] = []
+        runner = Mock(return_value=Mock())
         with TemporaryDirectory() as directory:
-            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, _: killed.append(pid), lambda _: None, FakeOutputLock, lambda _: True)  # type: ignore[arg-type]
+            controls = DiagnosticControls(Path(directory) / "state", popen, lambda pid, _: killed.append(pid), lambda _: None, FakeOutputLock, lambda _: True, runner)  # type: ignore[arg-type]
             with self.assertRaises(DiagnosticControlsError):
                 controls.on()
         self.assertEqual(killed, [101])

@@ -94,8 +94,12 @@ hardware-agenta, root uruchamia `pcdog-test` (instalowane także jako
 `status`, `inputs`, `outputs`, `power-on`, `power-off`, `reset-on`,
 `reset-off`, `all-on` i `all-off`; nie przyjmuje GPIO, czasu ani polaryzacji.
 GPIO17 i GPIO18 są zawsze ACTIVE-HIGH. Polecenia `*-on` utrzymują stan aż do
-odpowiedniego `*-off`; `all-off` kończy oba procesy `gpioset` i zwalnia linie.
-`status` używa wyłącznie `gpioinfo`, więc nie zmienia konfiguracji GPIO.
+odpowiedniego `*-off`. Każde `*-off` najpierw wykonuje `pinctrl set <GPIO> op
+dl`, wymuszając fizyczne LOW/INACTIVE, a dopiero potem kończy proces `gpioset`
+i zwalnia linię; `all-off` najpierw ustawia LOW na obu wyjściach, następnie
+zwalnia oba procesy. Niepowodzenie ustawienia LOW zachowuje ownership, zamiast
+zwolnić linię o nieznanym poziomie. `status` używa wyłącznie `gpioinfo`, więc
+nie zmienia konfiguracji GPIO.
 
 Własność GPIO17/18 jest synchronizowana wspólną blokadą
 `/run/pcdog-gpio-control.lock`: proces `gpioset` diagnostyki dziedziczy ją na

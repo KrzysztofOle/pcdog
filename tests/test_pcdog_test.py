@@ -6,12 +6,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
+import subprocess
 import unittest
 from unittest.mock import Mock, patch
 
 from pcdog_runtime.diagnostic_controls import (
     DIAGNOSTIC_CONSUMER,
     DiagnosticControls,
+    DiagnosticControlsError,
     main,
     print_status,
 )
@@ -103,11 +105,15 @@ class PcDogTestTests(unittest.TestCase):
         controls.assert_not_called()
 
     def test_independent_controls_and_all_controls_use_only_active_high_fixed_lines(self) -> None:
-        processes = [Process(101), Process(102)]
-        popen = Mock(side_effect=processes)
-        killed: list[int] = []
+        events: list[str] = []
+        processes = iter([Process(101), Process(102)])
+        popen = Mock(side_effect=lambda command, **_: events.append(f"active:{command[-1].split('=')[0]}") or next(processes))
+        runner = Mock(side_effect=lambda command, **_: events.append(f"low:{command[2]}") or Mock())
         with TemporaryDirectory() as directory:
-            controls = DiagnosticControls(Path(directory), popen, lambda pid, _: killed.append(pid), lambda _: None, Lock, lambda _: True)  # type: ignore[arg-type]
+            controls = DiagnosticControls(
+                Path(directory), popen, lambda pid, _: events.append(f"term:{pid}"), lambda _: None,
+                Lock, lambda _: True, runner,
+            )  # type: ignore[arg-type]
             controls.power_on()
             controls.reset_on()
             controls.power_off()
@@ -116,18 +122,44 @@ class PcDogTestTests(unittest.TestCase):
             ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "17=active"],
             ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "18=active"],
         ])
-        self.assertEqual(killed, [101, 102])
+        self.assertEqual(events, ["active:17", "active:18", "low:17", "term:101", "low:18", "term:102"])
+        self.assertEqual(
+            [call.args[0] for call in runner.call_args_list],
+            [["pinctrl", "set", "17", "op", "dl"], ["pinctrl", "set", "18", "op", "dl"]],
+        )
         self.assertEqual(ControlPolarity.ACTIVE_HIGH.value, "active-high")
 
-    def test_all_on_and_all_off_cover_both_fixed_lines(self) -> None:
-        popen = Mock(side_effect=[Process(101), Process(102)])
-        killed: list[int] = []
+    def test_all_off_sets_both_lines_inactive_before_releasing_either_owner(self) -> None:
+        events: list[str] = []
+        processes = iter([Process(101), Process(102)])
+        popen = Mock(side_effect=lambda command, **_: events.append(f"active:{command[-1].split('=')[0]}") or next(processes))
+        runner = Mock(side_effect=lambda command, **_: events.append(f"low:{command[2]}") or Mock())
         with TemporaryDirectory() as directory:
-            controls = DiagnosticControls(Path(directory), popen, lambda pid, _: killed.append(pid), lambda _: None, Lock, lambda _: True)  # type: ignore[arg-type]
+            controls = DiagnosticControls(
+                Path(directory), popen, lambda pid, _: events.append(f"term:{pid}"), lambda _: None,
+                Lock, lambda _: True, runner,
+            )  # type: ignore[arg-type]
             controls.all_on()
             controls.all_off()
-        self.assertEqual(killed, [101, 102])
+        self.assertEqual(events, ["active:17", "active:18", "low:17", "low:18", "term:101", "term:102"])
         self.assertEqual(len(popen.call_args_list), 2)
+
+    def test_failed_inactive_transition_does_not_release_active_owner(self) -> None:
+        process = Process(101)
+        popen = Mock(return_value=process)
+        killed: list[int] = []
+        runner = Mock(side_effect=subprocess.CalledProcessError(1, ["pinctrl", "set", "17", "op", "dl"]))
+        with TemporaryDirectory() as directory:
+            state_directory = Path(directory)
+            controls = DiagnosticControls(
+                state_directory, popen, lambda pid, _: killed.append(pid), lambda _: None,
+                Lock, lambda _: True, runner,
+            )  # type: ignore[arg-type]
+            controls.power_on()
+            with self.assertRaises(DiagnosticControlsError):
+                controls.power_off()
+            self.assertTrue((state_directory / "gpio17.pid").exists())
+        self.assertEqual(killed, [])
 
     def test_agent_refuses_output_when_diagnostic_owner_holds_lock(self) -> None:
         popen = Mock()
