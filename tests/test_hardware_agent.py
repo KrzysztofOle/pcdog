@@ -117,7 +117,19 @@ class HardwareAgentTests(unittest.TestCase):
         self.assertEqual(reading.hdd_activity, HddActivity.ACTIVE)
         self.assertEqual(reading.power_led, PowerLedState.OFF)
         self.assertTrue(reading.hdd_activity_reliable)
-        self.assertEqual(runner.call_args.args[0], ["gpioget", "--numeric", "--chip", "gpiochip0", "20", "19"])
+        self.assertEqual(
+            runner.call_args.args[0],
+            ["gpioget", "--numeric", "--active-low", "--bias", "pull-up", "--chip", "gpiochip0", "20", "19"],
+        )
+
+    def test_open_collector_input_configuration_is_active_low_with_pull_up(self) -> None:
+        unit = (Path(__file__).parents[1] / "systemd" / "pcdog-hardware-agent.service").read_text()
+        self.assertIn("ExecStartPre=/usr/bin/pinctrl set 19 ip pu", unit)
+        self.assertIn("ExecStartPre=/usr/bin/pinctrl set 20 ip pu", unit)
+        completed = Mock(stdout="20=active 19=inactive\n")
+        reading = GpioInputReader(Mock(return_value=completed)).read()
+        self.assertEqual(reading.hdd_activity, HddActivity.ACTIVE)
+        self.assertEqual(reading.power_led, PowerLedState.OFF)
 
     def test_gpio_reader_accepts_libgpiod_v2_numeric_output(self) -> None:
         self.assertEqual(GpioInputReader._parse_values("0 1\n"), (False, True))

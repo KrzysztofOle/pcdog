@@ -56,7 +56,7 @@ class OutputBusyError(RuntimeError):
 
 
 class GpioInputReader:
-    """Czyta tylko GPIO19/GPIO20 przez ``gpioget`` jako wejścia."""
+    """Czyta aktywne-nisko GPIO19/GPIO20 z pull-up przez ``gpioget``."""
 
     def __init__(self, runner=subprocess.run) -> None:
         self._runner = runner
@@ -64,7 +64,10 @@ class GpioInputReader:
     def read(self) -> InputReading:
         try:
             result = self._runner(
-                ["gpioget", "--numeric", "--chip", GPIO_CHIP, str(HDD_LED_GPIO), str(POWER_LED_GPIO)],
+                [
+                    "gpioget", "--numeric", "--active-low", "--bias", "pull-up",
+                    "--chip", GPIO_CHIP, str(HDD_LED_GPIO), str(POWER_LED_GPIO),
+                ],
                 check=True, capture_output=True, text=True, timeout=1.0,
             )
             hdd_value, power_value = self._parse_values(result.stdout)
