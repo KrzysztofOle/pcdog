@@ -24,7 +24,7 @@ Oddziela czasowy debounce POWER LED oraz politykę hold dla impulsów HDD od
 interpretacji domenowej w State Engine.
 
 IMPLEMENTED (software): `pcdog-hardware-agent.service` działa jako `root:pcdog`
-i odczytuje GPIO19 (HDD LED) oraz GPIO20 (POWER LED) przez `gpioget`. Linux
+i odczytuje GPIO19 (POWER LED) oraz GPIO20 (HDD LED) przez `gpioget`. Linux
 GPIO character-device wymaga deskryptora `O_RDWR` także dla żądania wejścia;
 dostęp unitu pozostaje ograniczony do `/dev/gpiochip0`. `pcdog.service`
 zachowuje `PrivateDevices=yes`, nie należy do grupy GPIO i odbiera dane przez
@@ -40,16 +40,16 @@ zamknięcie IPC nie może przedłużyć impulsu. POWER i RESET są wzajemnie
 wykluczone.
 
 Oddzielny root-only program `/opt/pcdog/bin/pcdog-test` służy wyłącznie do
-lokalnej diagnostyki GPIO16/17/19/20. Nie komunikuje się przez socket
+lokalnej diagnostyki GPIO17/18/19/20. Nie komunikuje się przez socket
 hardware-agenta, nie jest endpointem Web API i nie przyjmuje numeru GPIO,
-czasu ani polaryzacji od wywołującego. GPIO16/17 są stale ACTIVE-HIGH;
+czasu ani polaryzacji od wywołującego. GPIO17/18 są stale ACTIVE-HIGH;
 `all-off` zwalnia oba wyjścia. Wspólna blokada `/run/pcdog-gpio-control.lock`
 uniemożliwia równoczesną własność wyjść przez diagnostykę i impuls agenta.
 `pcdog-diagnostic-controls on|off` pozostaje zgodnym aliasem dla
 `pcdog-test all-on|all-off`.
 
-Domyślnie usługa nie otrzymuje `PCDOG_CONTROL_POLARITY`, dlatego GPIO16 i
-GPIO17 pozostają INPUT, a oba polecenia impulsu są odrzucone. Plik opcjonalny
+Domyślnie usługa nie otrzymuje `PCDOG_CONTROL_POLARITY`, dlatego GPIO17 i
+GPIO18 pozostają INPUT, a oba polecenia impulsu są odrzucone. Plik opcjonalny
 `/etc/pcdog/hardware-control.conf` jest wczytywany wyłącznie jako
 `EnvironmentFile` systemd i musi mieć jedną potwierdzoną wartość
 `PCDOG_CONTROL_POLARITY=active-high` albo `active-low`. Brak potwierdzonej

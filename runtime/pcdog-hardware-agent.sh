@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dedicated GPIO agent. GPIO19/GPIO20 are always read-only; output commands
+# Dedicated GPIO agent. GPIO19/GPIO20 are always read-only; GPIO17/GPIO18 output commands
 # remain disabled unless root supplied a confirmed control polarity.
 set -eu
 export PYTHONPATH='/opt/pcdog/lib'

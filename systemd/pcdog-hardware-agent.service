@@ -32,7 +32,7 @@ CapabilityBoundingSet=
 DevicePolicy=closed
 # Linux GPIO character-device requires O_RDWR even when gpioget requests an
 # input line. The agent exposes only GPIO19/GPIO20 reads and, when explicitly
-# configured, bounded semantic pulses on fixed GPIO16/GPIO17.
+# configured, bounded semantic pulses on fixed GPIO17/GPIO18.
 DeviceAllow=/dev/gpiochip0 rw
 
 [Install]

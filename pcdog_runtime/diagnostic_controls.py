@@ -11,15 +11,23 @@ import sys
 import time
 from typing import Callable, Sequence
 
-from .hardware_agent import ControlPolarity, GPIO_CHIP, GpioInputReader, POWER_CONTROL_GPIO, RESET_CONTROL_GPIO
+from .hardware_agent import (
+    ControlPolarity,
+    GPIO_CHIP,
+    GpioInputReader,
+    HDD_LED_GPIO,
+    POWER_CONTROL_GPIO,
+    POWER_LED_GPIO,
+    RESET_CONTROL_GPIO,
+)
 from .gpio_ownership import OutputLock, OutputLockBusyError
 
 
 DIAGNOSTIC_GPIOS = (POWER_CONTROL_GPIO, RESET_CONTROL_GPIO)
 DIAGNOSTIC_CONSUMER = "pcdog-test"
 DEFAULT_STATE_DIRECTORY = Path("/run/pcdog-diagnostic-controls")
-HDD_MONITOR_GPIO = 19
-POWER_MONITOR_GPIO = 20
+HDD_MONITOR_GPIO = HDD_LED_GPIO
+POWER_MONITOR_GPIO = POWER_LED_GPIO
 
 HELP_TEXT = """Usage:
   pcdog-test <command>
@@ -27,21 +35,21 @@ HELP_TEXT = """Usage:
 Commands:
   status       Show all PcDog GPIO states
   inputs       Show GPIO19/GPIO20 monitor inputs
-  outputs      Show GPIO16/GPIO17 control outputs
+  outputs      Show GPIO17/GPIO18 control outputs
 
-  power-on     Set POWER control GPIO16 ACTIVE
-  power-off    Release POWER control GPIO16
-  reset-on     Set RESET control GPIO17 ACTIVE
-  reset-off    Release RESET control GPIO17
-  all-on       Set GPIO16 and GPIO17 ACTIVE
-  all-off      Release GPIO16 and GPIO17
+  power-on     Set POWER control GPIO17 ACTIVE
+  power-off    Release POWER control GPIO17
+  reset-on     Set RESET control GPIO18 ACTIVE
+  reset-off    Release RESET control GPIO18
+  all-on       Set GPIO17 and GPIO18 ACTIVE
+  all-off      Release GPIO17 and GPIO18
   help         Show this help
 
 GPIO mapping:
-  GPIO16  POWER CONTROL
-  GPIO17  RESET CONTROL
-  GPIO19  HDD LED MONITOR
-  GPIO20  POWER LED MONITOR
+  GPIO17  POWER CONTROL
+  GPIO18  RESET CONTROL
+  GPIO19  POWER LED MONITOR
+  GPIO20  HDD LED MONITOR
 
 WARNING:
   power-on, reset-on and all-on are diagnostic commands.
@@ -55,7 +63,7 @@ class DiagnosticControlsError(RuntimeError):
 
 
 class DiagnosticControls:
-    """Utrzymuje wyłącznie GPIO16 i GPIO17 w potwierdzonej polaryzacji.
+    """Utrzymuje wyłącznie GPIO17 i GPIO18 w potwierdzonej polaryzacji.
 
     Każdy kanał ma własny proces ``gpioset``. Proces pozostaje aktywny bez
     timeoutu, więc jest właścicielem żądania GPIO aż do jawnego ``off``.
@@ -257,7 +265,7 @@ def _read_output_levels(signals: Sequence[tuple[str, int]]) -> list[tuple[str, i
     try:
         result = subprocess.run(["gpioinfo", "--chip", GPIO_CHIP, *[str(gpio) for _, gpio in signals]], check=True, capture_output=True, text=True, timeout=1.0)
     except (OSError, subprocess.SubprocessError) as error:
-        raise DiagnosticControlsError("nie udało się odczytać wyjść GPIO16/GPIO17") from error
+        raise DiagnosticControlsError("nie udało się odczytać wyjść GPIO17/GPIO18") from error
     lines = result.stdout.splitlines()
     states = []
     for name, gpio in signals:

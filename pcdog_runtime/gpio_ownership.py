@@ -11,7 +11,7 @@ DEFAULT_OUTPUT_LOCK_PATH = Path("/run/pcdog-gpio-control.lock")
 
 
 class OutputLockBusyError(RuntimeError):
-    """GPIO16/17 są aktualnie własnością innego, zatwierdzonego trybu."""
+    """GPIO17/18 są aktualnie własnością innego, zatwierdzonego trybu."""
 
 
 class OutputLock:
@@ -36,7 +36,7 @@ class OutputLock:
                 os.close(fd)
             except UnboundLocalError:
                 pass
-            raise OutputLockBusyError("GPIO16/GPIO17 są zajęte przez innego właściciela") from error
+            raise OutputLockBusyError("GPIO17/GPIO18 są zajęte przez innego właściciela") from error
         self._fd = fd
         return fd
 

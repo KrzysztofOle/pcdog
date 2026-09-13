@@ -66,10 +66,10 @@ def observe_one_pulse(
 
 def _reading_payload(reading: InputReading) -> dict[str, object]:
     return {
-        "gpio19_hdd_monitor": reading.hdd_activity.value,
-        "gpio19_reliable": reading.hdd_activity_reliable,
-        "gpio20_power_monitor": reading.power_led.value,
-        "gpio20_reliable": reading.power_led_reliable,
+        "gpio19_power_monitor": reading.power_led.value,
+        "gpio19_reliable": reading.power_led_reliable,
+        "gpio20_hdd_monitor": reading.hdd_activity.value,
+        "gpio20_reliable": reading.hdd_activity_reliable,
     }
 
 

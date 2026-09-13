@@ -3,7 +3,7 @@
 PcDog przygotowuje Raspberry Pi Zero 2 W do przyszłej roli kontrolera komputera.
 Pierwsza faza zapewnia powtarzalny, bezpieczny fundament systemowy. W v0.1-test
 obsługuje obserwacyjnie wejścia GPIO19/GPIO20. Warstwa ograniczonych impulsów
-GPIO16/GPIO17 jest domyślnie wyłączona fail-closed, dopóki polaryzacja sprzętu
+GPIO17/GPIO18 jest domyślnie wyłączona fail-closed, dopóki polaryzacja sprzętu
 nie zostanie fizycznie potwierdzona i skonfigurowana lokalnie.
 
 ## Przygotowanie nowego Raspberry Pi

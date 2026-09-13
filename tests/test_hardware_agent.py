@@ -19,8 +19,10 @@ from pcdog_runtime.hardware_agent import (
     DEFAULT_PULSE_DURATION_MS,
     GpioInputReader,
     GpioPulseExecutor,
+    HDD_LED_GPIO,
     OutputBusyError,
     POWER_CONTROL_GPIO,
+    POWER_LED_GPIO,
     PulseController,
     PulseError,
     RESET_CONTROL_GPIO,
@@ -102,14 +104,20 @@ class HardwareAgentTests(unittest.TestCase):
         self.assertNotIn("read_gpio", source)
         self.assertNotIn("gpio=", source)
 
-    def test_gpio_reader_maps_hdd19_and_power20(self) -> None:
-        completed = Mock(stdout="19=active 20=inactive\n")
+    def test_confirmed_gpio_mapping_covers_all_four_signals(self) -> None:
+        self.assertEqual(POWER_CONTROL_GPIO, 17)
+        self.assertEqual(RESET_CONTROL_GPIO, 18)
+        self.assertEqual(POWER_LED_GPIO, 19)
+        self.assertEqual(HDD_LED_GPIO, 20)
+
+    def test_gpio_reader_maps_power19_and_hdd20(self) -> None:
+        completed = Mock(stdout="20=active 19=inactive\n")
         runner = Mock(return_value=completed)
         reading = GpioInputReader(runner).read()
         self.assertEqual(reading.hdd_activity, HddActivity.ACTIVE)
         self.assertEqual(reading.power_led, PowerLedState.OFF)
         self.assertTrue(reading.hdd_activity_reliable)
-        self.assertEqual(runner.call_args.args[0], ["gpioget", "--numeric", "--chip", "gpiochip0", "19", "20"])
+        self.assertEqual(runner.call_args.args[0], ["gpioget", "--numeric", "--chip", "gpiochip0", "20", "19"])
 
     def test_gpio_reader_accepts_libgpiod_v2_numeric_output(self) -> None:
         self.assertEqual(GpioInputReader._parse_values("0 1\n"), (False, True))
@@ -132,14 +140,14 @@ class HardwareAgentTests(unittest.TestCase):
     def test_closed_protocol_has_no_arbitrary_gpio_operation(self) -> None:
         reader = Mock()
         for request in (
-            b'{"operation":"set_gpio","gpio":16,"value":1}\n',
+            b'{"operation":"set_gpio","gpio":999,"value":1}\n',
             b'{"operation":"read_gpio","gpio":19}\n',
-            b'{"operation":"pulse_power","gpio":16}\n',
+            b'{"operation":"pulse_power","gpio":999}\n',
         ):
             self.assertIn(handle_request(request, reader)["status"], {"ACTION_NOT_ENABLED", "INVALID_REQUEST"})
         reader.read.assert_not_called()
 
-    def test_diagnostic_controls_are_local_only_and_fixed_to_active_high_gpio16_gpio17(self) -> None:
+    def test_diagnostic_controls_are_local_only_and_fixed_to_active_high_gpio17_gpio18(self) -> None:
         processes = [DiagnosticProcess(101), DiagnosticProcess(102)]
         popen = Mock(side_effect=processes)
         killed: list[tuple[int, int]] = []
@@ -149,8 +157,8 @@ class HardwareAgentTests(unittest.TestCase):
             self.assertEqual(
                 [call.args[0] for call in popen.call_args_list],
                 [
-                    ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "16=active"],
                     ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "17=active"],
+                    ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "18=active"],
                 ],
             )
             controls.off()
@@ -179,7 +187,7 @@ class HardwareAgentTests(unittest.TestCase):
         GpioPulseExecutor(ControlPolarity.ACTIVE_HIGH, popen, FakeOutputLock).pulse(POWER_CONTROL_GPIO, 200)
         self.assertEqual(
             popen.call_args.args[0],
-            ["gpioset", "--chip", "gpiochip0", "--consumer", "pcdog-hardware-agent", "--toggle", "200ms,0", "16=active"],
+            ["gpioset", "--chip", "gpiochip0", "--consumer", "pcdog-hardware-agent", "--toggle", "200ms,0", "17=active"],
         )
         self.assertEqual(popen.call_args.kwargs["stdout"], subprocess.PIPE)
 
@@ -189,7 +197,7 @@ class HardwareAgentTests(unittest.TestCase):
         popen = Mock(return_value=process)
         GpioPulseExecutor(ControlPolarity.ACTIVE_LOW, popen, FakeOutputLock).pulse(RESET_CONTROL_GPIO, 200)
         self.assertIn("--active-low", popen.call_args.args[0])
-        self.assertIn("17=active", popen.call_args.args[0])
+        self.assertIn("18=active", popen.call_args.args[0])
 
     def test_timeout_or_exception_terminates_gpio_owner_and_reports_failure(self) -> None:
         process = Mock()

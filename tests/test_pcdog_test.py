@@ -59,7 +59,10 @@ class PcDogTestTests(unittest.TestCase):
                  redirect_stdout(output):
                 self.assertIsNone(main([command]))
             self.assertIn("Usage:", output.getvalue())
-            self.assertIn("GPIO16  POWER CONTROL", output.getvalue())
+            self.assertIn("GPIO17  POWER CONTROL", output.getvalue())
+            self.assertIn("GPIO18  RESET CONTROL", output.getvalue())
+            self.assertIn("GPIO19  POWER LED MONITOR", output.getvalue())
+            self.assertIn("GPIO20  HDD LED MONITOR", output.getvalue())
             controls.assert_not_called()
             run.assert_not_called()
 
@@ -92,7 +95,7 @@ class PcDogTestTests(unittest.TestCase):
     def test_invalid_arguments_and_non_root_fail_closed_before_gpio_action(self) -> None:
         with patch("pcdog_runtime.diagnostic_controls.os.geteuid", return_value=0):
             with self.assertRaises(SystemExit):
-                main(["16"])
+                main(["999"])
         with patch("pcdog_runtime.diagnostic_controls.os.geteuid", return_value=1000), \
              patch("pcdog_runtime.diagnostic_controls.DiagnosticControls") as controls:
             with self.assertRaises(SystemExit):
@@ -110,8 +113,8 @@ class PcDogTestTests(unittest.TestCase):
             controls.power_off()
             controls.reset_off()
         self.assertEqual([call.args[0] for call in popen.call_args_list], [
-            ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "16=active"],
             ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "17=active"],
+            ["gpioset", "--chip", "gpiochip0", "--consumer", DIAGNOSTIC_CONSUMER, "18=active"],
         ])
         self.assertEqual(killed, [101, 102])
         self.assertEqual(ControlPolarity.ACTIVE_HIGH.value, "active-high")
@@ -129,18 +132,27 @@ class PcDogTestTests(unittest.TestCase):
     def test_agent_refuses_output_when_diagnostic_owner_holds_lock(self) -> None:
         popen = Mock()
         with self.assertRaises(OutputBusyError):
-            GpioPulseExecutor(ControlPolarity.ACTIVE_HIGH, popen, BusyLock).pulse(16, 200)
+            GpioPulseExecutor(ControlPolarity.ACTIVE_HIGH, popen, BusyLock).pulse(17, 200)
         popen.assert_not_called()
 
     def test_status_format_is_read_only_and_covers_only_requested_fixed_signals(self) -> None:
-        output_completed = Mock(stdout="16 POWER output active\n17 RESET output inactive\n")
-        input_completed = Mock(stdout="0 1\n")
+        output_completed = Mock(stdout="17 POWER output active\n18 RESET output inactive\n")
+        input_completed = Mock(stdout="20=active 19=inactive\n")
         with patch("pcdog_runtime.diagnostic_controls.subprocess.run", side_effect=[output_completed, input_completed]) as run, \
              patch("builtins.print") as output:
             print_status("status")
-        self.assertEqual(run.call_args_list[0].args[0], ["gpioinfo", "--chip", "gpiochip0", "16", "17"])
-        self.assertEqual(run.call_args_list[1].args[0], ["gpioget", "--numeric", "--chip", "gpiochip0", "19", "20"])
+        self.assertEqual(run.call_args_list[0].args[0], ["gpioinfo", "--chip", "gpiochip0", "17", "18"])
+        self.assertEqual(run.call_args_list[1].args[0], ["gpioget", "--numeric", "--chip", "gpiochip0", "20", "19"])
         self.assertEqual(output.call_count, 4)
+        self.assertEqual(
+            [call.args[0] for call in output.call_args_list],
+            [
+                "POWER_CONTROL   GPIO17  HIGH",
+                "RESET_CONTROL   GPIO18  LOW",
+                "HDD_MONITOR     GPIO20  HIGH",
+                "POWER_MONITOR   GPIO19  LOW",
+            ],
+        )
 
     def test_web_api_has_no_control_surface(self) -> None:
         source = (Path(__file__).parents[1] / "pcdog_runtime" / "web_api.py").read_text(encoding="utf-8")
