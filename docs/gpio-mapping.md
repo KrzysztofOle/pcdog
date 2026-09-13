@@ -18,7 +18,7 @@ Human Authority. Numery fizycznych pinów 40-pinowego headera zweryfikowano z
 | HDD LED monitor | INPUT | GPIO20 | 38 | transoptor → GPIO input | IDENTITY CONFIRMED |
 
 GPIO19 i GPIO20 są wejściami transoptorów open-collector aktywnymi stanem
-LOW. `pcdog-hardware-agent.service` trwałe ustawia dla nich `input pull-up`
+LOW. `pcdog-gpio-input-init.service` trwałe ustawia dla nich `input pull-up`
 przed startem agenta, a każdy odczyt `gpioget` żąda `pull-up` oraz
 `--active-low`. Stan wysoki jest więc elektrycznie nieaktywny, a niski oznacza
 aktywny POWER LED lub HDD.

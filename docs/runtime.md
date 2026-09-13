@@ -31,14 +31,15 @@ zachowuje `PrivateDevices=yes`, nie należy do grupy GPIO i odbiera dane przez
 socket. Błąd GPIO lub brak agenta jest mapowany na niewiarygodny `UNKNOWN`, a
 nie `OFF`.
 
-Oba wejścia są open-collector i aktywne-nisko. Unit hardware-agenta przed
-startem ustawia `GPIO19` i `GPIO20` jako `input pull-up`; każdy odczyt używa
-również `gpioget --bias pull-up --active-low`, więc niski poziom fizyczny jest
-przekazywany jako aktywny POWER LED/HDD, a wysoki jako nieaktywny.
-Polecenia `pinctrl` w `ExecStartPre` mają prefiks systemd `+`, ponieważ narzędzie
-wymaga dostępu blokowanego przez `ProtectKernelTunables`; wyjątek dotyczy tylko
-tych dwóch jednorazowych konfiguracji wejść, a działający agent zachowuje
-sandbox.
+Oba wejścia są open-collector i aktywne-nisko. Jednostka typu oneshot
+`pcdog-gpio-input-init.service` ustawia `GPIO19` i `GPIO20` jako `input pull-up`
+przed startem hardware-agenta; każdy odczyt używa również
+`gpioget --bias pull-up --active-low`, więc niski poziom fizyczny jest
+przekazywany jako aktywny POWER LED/HDD, a wysoki jako nieaktywny. Agent wymaga
+zakończonego powodzeniem unitu inicjalizacyjnego (`Requires=` i `After=`), więc
+nie uruchamia się bez poprawnego ustawienia wejść. Inicjalizator może wyłącznie
+mapować `/dev/gpiomem` i skonfigurować GPIO19/20; długo działający agent
+zachowuje `ProtectKernelTunables=yes` oraz pozostały hardening.
 
 Socket przyjmuje zawsze tylko `status` i `read_inputs`, a przy jawnie włączonym
 sterowaniu dodatkowo wyłącznie `pulse_power` oraz `pulse_reset`. Nie ma API z

@@ -1,16 +1,13 @@
 [Unit]
 Description=PcDog constrained GPIO hardware agent
 Documentation=https://github.com/KrzysztofOle/pcdog
-After=local-fs.target
+Requires=pcdog-gpio-input-init.service
+After=local-fs.target pcdog-gpio-input-init.service
 
 [Service]
 Type=simple
 User=root
 Group=pcdog
-# The `+` prefix lets only this one-shot pinctrl setup bypass
-# ProtectKernelTunables; the long-running agent remains sandboxed.
-ExecStartPre=+/usr/bin/pinctrl set 19 ip pu
-ExecStartPre=+/usr/bin/pinctrl set 20 ip pu
 ExecStart=/opt/pcdog/bin/pcdog-hardware-agent
 EnvironmentFile=-/etc/pcdog/hardware-control.conf
 Restart=on-failure

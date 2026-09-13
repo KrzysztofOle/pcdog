@@ -1,0 +1,31 @@
+[Unit]
+Description=PcDog open-collector GPIO input initialization
+Documentation=https://github.com/KrzysztofOle/pcdog
+After=local-fs.target
+Before=pcdog-hardware-agent.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+# GPIO19/20 are the only lines configured here. Their optocouplers are
+# open-collector and active-low, so idle requires a pull-up.
+ExecStart=/usr/bin/pinctrl set 19 ip pu
+ExecStart=/usr/bin/pinctrl set 20 ip pu
+RemainAfterExit=yes
+NoNewPrivileges=yes
+PrivateDevices=no
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectKernelModules=yes
+# pinctrl maps /dev/gpiomem; ProtectKernelTunables would hide that mapping.
+ProtectSystem=strict
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+DevicePolicy=closed
+DeviceAllow=/dev/gpiomem rw
+
+[Install]
+WantedBy=multi-user.target

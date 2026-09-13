@@ -28,10 +28,12 @@ readonly SERVICE_NAME='pcdog.service'
 readonly SYSTEM_AGENT_SERVICE_NAME='pcdog-system-agent.service'
 readonly NETWORK_AGENT_SERVICE_NAME='pcdog-network-agent.service'
 readonly HARDWARE_AGENT_SERVICE_NAME='pcdog-hardware-agent.service'
+readonly GPIO_INPUT_INIT_SERVICE_NAME='pcdog-gpio-input-init.service'
 readonly SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
 readonly SYSTEM_AGENT_SERVICE_PATH="/etc/systemd/system/$SYSTEM_AGENT_SERVICE_NAME"
 readonly NETWORK_AGENT_SERVICE_PATH="/etc/systemd/system/$NETWORK_AGENT_SERVICE_NAME"
 readonly HARDWARE_AGENT_SERVICE_PATH="/etc/systemd/system/$HARDWARE_AGENT_SERVICE_NAME"
+readonly GPIO_INPUT_INIT_SERVICE_PATH="/etc/systemd/system/$GPIO_INPUT_INIT_SERVICE_NAME"
 readonly RUNTIME_SOURCE="$project_dir/runtime/pcdog-runtime.sh"
 readonly HEALTH_CHECK_SOURCE="$project_dir/runtime/pcdog-healthcheck.sh"
 readonly WEB_AUTH_SOURCE="$project_dir/runtime/pcdog-web-auth.sh"
@@ -44,6 +46,7 @@ readonly SERVICE_SOURCE="$project_dir/systemd/$SERVICE_NAME"
 readonly SYSTEM_AGENT_SERVICE_SOURCE="$project_dir/systemd/$SYSTEM_AGENT_SERVICE_NAME"
 readonly NETWORK_AGENT_SERVICE_SOURCE="$project_dir/systemd/$NETWORK_AGENT_SERVICE_NAME"
 readonly HARDWARE_AGENT_SERVICE_SOURCE="$project_dir/systemd/$HARDWARE_AGENT_SERVICE_NAME"
+readonly GPIO_INPUT_INIT_SERVICE_SOURCE="$project_dir/systemd/$GPIO_INPUT_INIT_SERVICE_NAME"
 readonly PYTHON_PACKAGE_SOURCE="$project_dir/pcdog_runtime"
 readonly -a PYTHON_PACKAGE_FILES=(
   '__init__.py'
@@ -139,6 +142,7 @@ runtime_layout_is_correct() {
   file_matches "$SYSTEM_AGENT_SERVICE_SOURCE" "$SYSTEM_AGENT_SERVICE_PATH" 644 || return 1
   file_matches "$NETWORK_AGENT_SERVICE_SOURCE" "$NETWORK_AGENT_SERVICE_PATH" 644 || return 1
   file_matches "$HARDWARE_AGENT_SERVICE_SOURCE" "$HARDWARE_AGENT_SERVICE_PATH" 644 || return 1
+  file_matches "$GPIO_INPUT_INIT_SERVICE_SOURCE" "$GPIO_INPUT_INIT_SERVICE_PATH" 644 || return 1
   for relative_path in "${PYTHON_PACKAGE_FILES[@]}"; do
     file_matches "$PYTHON_PACKAGE_SOURCE/$relative_path" "$RUNTIME_PACKAGE_DIRECTORY/$relative_path" 644 || return 1
   done
@@ -160,6 +164,8 @@ if "$check_only"; then
   systemctl is-active --quiet "$NETWORK_AGENT_SERVICE_NAME" || die "Usługa ${NETWORK_AGENT_SERVICE_NAME} nie jest aktywna."
   systemctl is-enabled --quiet "$HARDWARE_AGENT_SERVICE_NAME" || die "Usługa ${HARDWARE_AGENT_SERVICE_NAME} nie jest włączona."
   systemctl is-active --quiet "$HARDWARE_AGENT_SERVICE_NAME" || die "Usługa ${HARDWARE_AGENT_SERVICE_NAME} nie jest aktywna."
+  systemctl is-enabled --quiet "$GPIO_INPUT_INIT_SERVICE_NAME" || die "Usługa ${GPIO_INPUT_INIT_SERVICE_NAME} nie jest włączona."
+  systemctl is-active --quiet "$GPIO_INPUT_INIT_SERVICE_NAME" || die "Usługa ${GPIO_INPUT_INIT_SERVICE_NAME} nie jest aktywna."
   "$script_dir/health-check.sh"
   log_success 'Runtime PcDog i usługa systemd są poprawnie zainstalowane.'
   exit 0
@@ -222,6 +228,7 @@ wait_for_healthy_runtime() {
 
 runtime_changed=false
 unit_changed=false
+gpio_input_init_changed=false
 
 if install_if_changed "$RUNTIME_SOURCE" "$RUNTIME_BINARY" 755; then
   runtime_changed=true
@@ -267,6 +274,10 @@ fi
 if install_if_changed "$HARDWARE_AGENT_SERVICE_SOURCE" "$HARDWARE_AGENT_SERVICE_PATH" 644; then
   unit_changed=true
 fi
+if install_if_changed "$GPIO_INPUT_INIT_SERVICE_SOURCE" "$GPIO_INPUT_INIT_SERVICE_PATH" 644; then
+  unit_changed=true
+  gpio_input_init_changed=true
+fi
 
 if "$unit_changed"; then
   log_info "Przeładowanie konfiguracji systemd po zmianie ${SERVICE_NAME}."
@@ -289,6 +300,18 @@ fi
 if ! systemctl is-enabled --quiet "$HARDWARE_AGENT_SERVICE_NAME"; then
   log_info "Włączanie ${HARDWARE_AGENT_SERVICE_NAME} do autostartu."
   systemctl enable "$HARDWARE_AGENT_SERVICE_NAME"
+fi
+if ! systemctl is-enabled --quiet "$GPIO_INPUT_INIT_SERVICE_NAME"; then
+  log_info "Włączanie ${GPIO_INPUT_INIT_SERVICE_NAME} do autostartu."
+  systemctl enable "$GPIO_INPUT_INIT_SERVICE_NAME"
+fi
+
+if ! systemctl is-active --quiet "$GPIO_INPUT_INIT_SERVICE_NAME"; then
+  log_info "Uruchamianie ${GPIO_INPUT_INIT_SERVICE_NAME}."
+  systemctl start "$GPIO_INPUT_INIT_SERVICE_NAME"
+elif "$gpio_input_init_changed"; then
+  log_info "Restart ${GPIO_INPUT_INIT_SERVICE_NAME} po zmianie unitu."
+  systemctl restart "$GPIO_INPUT_INIT_SERVICE_NAME"
 fi
 
 if ! systemctl is-active --quiet "$SYSTEM_AGENT_SERVICE_NAME"; then
