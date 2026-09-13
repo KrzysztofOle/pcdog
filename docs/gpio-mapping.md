@@ -98,8 +98,10 @@ odpowiedniego `*-off`. Każde `*-off` najpierw wykonuje `pinctrl set <GPIO> op
 dl`, wymuszając fizyczne LOW/INACTIVE, a dopiero potem kończy proces `gpioset`
 i zwalnia linię; `all-off` najpierw ustawia LOW na obu wyjściach, następnie
 zwalnia oba procesy. Niepowodzenie ustawienia LOW zachowuje ownership, zamiast
-zwolnić linię o nieznanym poziomie. `status` używa wyłącznie `gpioinfo`, więc
-nie zmienia konfiguracji GPIO.
+zwolnić linię o nieznanym poziomie. `status` używa odczytowo `gpioinfo` do
+potwierdzenia kierunku i `pinctrl get <GPIO>` do potwierdzenia fizycznego
+poziomu; rozbieżność albo brak któregoś odczytu jest raportowana jako
+`UNKNOWN`.
 
 Własność GPIO17/18 jest synchronizowana wspólną blokadą
 `/run/pcdog-gpio-control.lock`: proces `gpioset` diagnostyki dziedziczy ją na

@@ -8,12 +8,13 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import subprocess
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from pcdog_runtime.diagnostic_controls import (
     DIAGNOSTIC_CONSUMER,
     DiagnosticControls,
     DiagnosticControlsError,
+    _read_output_levels,
     main,
     print_status,
 )
@@ -84,13 +85,14 @@ class PcDogTestTests(unittest.TestCase):
         for command in read_only + actions:
             controls = Mock()
             with patch("pcdog_runtime.diagnostic_controls.os.geteuid", return_value=0), \
-                 patch("pcdog_runtime.diagnostic_controls.DiagnosticControls", return_value=controls), \
-                 patch("pcdog_runtime.diagnostic_controls.print_status") as status:
+                patch("pcdog_runtime.diagnostic_controls.DiagnosticControls", return_value=controls), \
+                patch("pcdog_runtime.diagnostic_controls.print_status") as status:
                 main([command])
             if command in read_only:
-                self.assertEqual(controls.method_calls, [])
+                self.assertEqual(controls.method_calls, [call.cleanup_stale_state()])
                 status.assert_called_once_with(command)
             else:
+                self.assertEqual(controls.method_calls[0], call.cleanup_stale_state())
                 getattr(controls, command.replace("-", "_"), Mock()).assert_called_once_with()
                 status.assert_called_once_with("outputs")
 
@@ -168,23 +170,55 @@ class PcDogTestTests(unittest.TestCase):
         popen.assert_not_called()
 
     def test_status_format_is_read_only_and_covers_only_requested_fixed_signals(self) -> None:
-        output_completed = Mock(stdout="17 POWER output active\n18 RESET output inactive\n")
+        output_completed = Mock(stdout="gpiochip0 17 \"GPIO17\" output\ngpiochip0 18 \"GPIO18\" output\n")
+        power_pinctrl = Mock(stdout="17: op -- -- | hi // GPIO17 = output\n")
+        reset_pinctrl = Mock(stdout="18: op -- -- | lo // GPIO18 = output\n")
         input_completed = Mock(stdout="20=active 19=inactive\n")
-        with patch("pcdog_runtime.diagnostic_controls.subprocess.run", side_effect=[output_completed, input_completed]) as run, \
+        with patch("pcdog_runtime.diagnostic_controls.subprocess.run", side_effect=[output_completed, power_pinctrl, reset_pinctrl, input_completed]) as run, \
              patch("builtins.print") as output:
             print_status("status")
         self.assertEqual(run.call_args_list[0].args[0], ["gpioinfo", "--chip", "gpiochip0", "17", "18"])
-        self.assertEqual(run.call_args_list[1].args[0], ["gpioget", "--numeric", "--chip", "gpiochip0", "20", "19"])
+        self.assertEqual(run.call_args_list[1].args[0], ["pinctrl", "get", "17"])
+        self.assertEqual(run.call_args_list[2].args[0], ["pinctrl", "get", "18"])
+        self.assertEqual(run.call_args_list[3].args[0], ["gpioget", "--numeric", "--chip", "gpiochip0", "20", "19"])
         self.assertEqual(output.call_count, 4)
         self.assertEqual(
             [call.args[0] for call in output.call_args_list],
             [
-                "POWER_CONTROL   GPIO17  HIGH",
-                "RESET_CONTROL   GPIO18  LOW",
+                "POWER_CONTROL   GPIO17  ACTIVE",
+                "RESET_CONTROL   GPIO18  INACTIVE",
                 "HDD_MONITOR     GPIO20  HIGH",
                 "POWER_MONITOR   GPIO19  LOW",
             ],
         )
+
+    def test_output_levels_require_consistent_gpioinfo_and_pinctrl_readings(self) -> None:
+        signals = (("POWER_CONTROL", 17), ("RESET_CONTROL", 18))
+        gpioinfo = Mock(stdout="gpiochip0 17 \"GPIO17\" output\ngpiochip0 18 \"GPIO18\" output\n")
+        power = Mock(stdout="17: op -- -- | lo // GPIO17 = output\n")
+        reset = Mock(stdout="18: op -- -- | hi // GPIO18 = output\n")
+        with patch("pcdog_runtime.diagnostic_controls.subprocess.run", side_effect=[gpioinfo, power, reset]):
+            self.assertEqual(_read_output_levels(signals), [("POWER_CONTROL", 17, "INACTIVE"), ("RESET_CONTROL", 18, "ACTIVE")])
+
+        conflicting = Mock(stdout="17: ip -- -- | lo // GPIO17 = input\n")
+        with patch("pcdog_runtime.diagnostic_controls.subprocess.run", side_effect=[gpioinfo, conflicting, reset]):
+            self.assertEqual(_read_output_levels(signals)[0], ("POWER_CONTROL", 17, "UNKNOWN"))
+
+        with patch("pcdog_runtime.diagnostic_controls.subprocess.run", side_effect=[gpioinfo, OSError(), reset]):
+            self.assertEqual(_read_output_levels(signals)[0], ("POWER_CONTROL", 17, "UNKNOWN"))
+
+    def test_cleanup_removes_only_nonexistent_legacy_pid_file(self) -> None:
+        with TemporaryDirectory() as directory:
+            state_directory = Path(directory)
+            legacy = state_directory / "gpio16.pid"
+            current = state_directory / "gpio17.pid"
+            legacy.write_text("123\n", encoding="ascii")
+            current.write_text("456\n", encoding="ascii")
+            controls = DiagnosticControls(state_directory)
+            with patch("pcdog_runtime.diagnostic_controls.os.kill", side_effect=ProcessLookupError):
+                controls.cleanup_stale_state()
+            self.assertFalse(legacy.exists())
+            self.assertTrue(current.exists())
 
     def test_web_api_has_no_control_surface(self) -> None:
         source = (Path(__file__).parents[1] / "pcdog_runtime" / "web_api.py").read_text(encoding="utf-8")

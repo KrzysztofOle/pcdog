@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
@@ -86,6 +87,30 @@ class DiagnosticControls:
         self._lock_factory = lock_factory
         self._is_owner = is_owner or self._is_diagnostic_owner
         self._runner = runner
+
+    def cleanup_stale_state(self) -> None:
+        """Usuwa tylko osierocone PID files linii spoza bieżącego mapowania."""
+        try:
+            paths = tuple(self._state_directory.glob("gpio*.pid"))
+        except OSError:
+            return
+        for path in paths:
+            match = re.fullmatch(r"gpio(\d+)\.pid", path.name)
+            if match is None or int(match.group(1)) in DIAGNOSTIC_GPIOS:
+                continue
+            try:
+                pid = int(path.read_text(encoding="ascii").strip())
+            except (OSError, ValueError):
+                continue
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    continue
+            except PermissionError:
+                continue
 
     def on(self) -> None:
         self.all_on()
@@ -248,6 +273,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
     if os.geteuid() != 0:
         parser.error("to narzędzie diagnostyczne wymaga root")
     controls = DiagnosticControls()
+    controls.cleanup_stale_state()
     operation = {"on": "all-on", "off": "all-off"}.get(args.operation, args.operation)
     try:
         if operation == "power-on": controls.power_on()
@@ -265,7 +291,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
 
 
 def print_status(operation: str) -> None:
-    """Tylko odczyty: ``gpioget`` dla wejść i ``gpioinfo`` dla wyjść."""
+    """Tylko odczyty: wejścia przez ``gpioget``, wyjścia przez GPIO i pinctrl."""
     output_signals = (("POWER_CONTROL", POWER_CONTROL_GPIO), ("RESET_CONTROL", RESET_CONTROL_GPIO))
     input_signals = (("HDD_MONITOR", HDD_MONITOR_GPIO), ("POWER_MONITOR", POWER_MONITOR_GPIO))
     if operation in {"status", "outputs"}:
@@ -294,13 +320,43 @@ def _read_output_levels(signals: Sequence[tuple[str, int]]) -> list[tuple[str, i
     lines = result.stdout.splitlines()
     states = []
     for name, gpio in signals:
-        line = next((candidate for candidate in lines if str(gpio) in candidate), "")
-        # libgpiod exposes the requested logical output value as active/inactive;
-        # active-high is polarity metadata and must not itself be treated as HIGH.
-        fields = line.split()
-        state = "HIGH" if "output active" in line else "LOW" if "output inactive" in line else "INACTIVE" if fields and fields[-1] == "input" else "UNKNOWN"
+        line = next((candidate for candidate in lines if re.match(rf"^gpiochip\S+\s+{gpio}\b", candidate)), "")
+        direction = _gpioinfo_direction(line)
+        pinctrl = _read_pinctrl_level(gpio)
+        if direction == "output" and pinctrl == ("op", "hi"):
+            state = "ACTIVE"
+        elif direction == "output" and pinctrl == ("op", "lo"):
+            state = "INACTIVE"
+        elif direction == "input" and pinctrl is not None and pinctrl[0] == "ip":
+            state = "INACTIVE"
+        else:
+            state = "UNKNOWN"
         states.append((name, gpio, state))
     return states
+
+
+def _gpioinfo_direction(line: str) -> str | None:
+    fields = line.split()
+    if "output" in fields:
+        return "output"
+    if "input" in fields:
+        return "input"
+    return None
+
+
+def _read_pinctrl_level(gpio: int) -> tuple[str, str] | None:
+    try:
+        result = subprocess.run(
+            ["pinctrl", "get", str(gpio)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=1.0,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(rf"^\s*{gpio}:\s+(op|ip)\b.*\|\s*(hi|lo)\b", result.stdout, re.MULTILINE)
+    return match.groups() if match is not None else None
 
 
 if __name__ == "__main__":
