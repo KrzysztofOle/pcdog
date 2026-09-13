@@ -1,10 +1,17 @@
 # PcDog
 
-PcDog przygotowuje Raspberry Pi Zero 2 W do przyszłej roli kontrolera komputera.
-Pierwsza faza zapewnia powtarzalny, bezpieczny fundament systemowy. W v0.1-test
-obsługuje obserwacyjnie wejścia GPIO19/GPIO20. Warstwa ograniczonych impulsów
-GPIO17/GPIO18 jest domyślnie wyłączona fail-closed, dopóki polaryzacja sprzętu
-nie zostanie fizycznie potwierdzona i skonfigurowana lokalnie.
+PcDog rozwija Raspberry Pi Zero 2 W jako kontroler i monitor komputera. Aktualna
+płytka ma potwierdzone mapowanie GPIO17/18/19/20 oraz przeszła kontrolowany test
+obu torów na obwodzie 3.3 V; komputer PC nie był podłączony do POWER ani RESET.
+Szczegóły mapowania, granic sterowania i kolejnego etapu są w
+[dokumentacji GPIO](docs/gpio-mapping.md), a trwały wynik testu w
+[raporcie kontrolowanego testu płytki](docs/gpio-controlled-board-test-2026-09-13.md).
+
+Monitoring używa GPIO19/GPIO20 jako wejść open-collector z pull-up i semantyką
+active-low. GPIO17 (POWER CONTROL) oraz GPIO18 (RESET CONTROL) są
+ACTIVE-HIGH; w świeżej instalacji runtime ich użycie pozostaje fail-closed bez
+jawnej lokalnej konfiguracji polaryzacji. Potwierdzony test płytki nie jest
+upoważnieniem do sterowania rzeczywistą płytą główną PC.
 
 ## Przygotowanie nowego Raspberry Pi
 

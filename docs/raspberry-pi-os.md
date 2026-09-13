@@ -71,9 +71,12 @@ runtime i usługę systemd PcDog. Zwykły bootstrap najpierw wykonuje ten sam
 preflight, później instaluje mały zestaw zależności, tworzy katalogi i uruchamia
 minimalny runtime. Każdy etap jest bezpieczny do powtórzenia.
 
-Bootstrap celowo nie konfiguruje GPIO, watchdoga, sterowania PC, aktualizacji
-ani istniejących ustawień Wi-Fi/USB. Jedynym dodatkowym kanałem sieciowym jest
-opcjonalny ZeroTier, który nie zmienia tras ani interfejsów PcDog; szczegóły są
-w [dokumentacji ZeroTier](zerotier.md). Minimalny runtime używa wyłącznie systemd i journald;
-szczegóły znajdują się w [dokumentacji runtime](runtime.md). Pozostałe funkcje
-zostaną dodane jako osobne etapy po ustaleniu ich wymagań.
+Bootstrap nie konfiguruje wyjść sterujących GPIO, watchdoga, sterowania PC,
+aktualizacji ani istniejących ustawień Wi-Fi/USB. Instaluje jednak runtime,
+który przez `pcdog-gpio-input-init.service` ustawia GPIO19 i GPIO20 jako wejścia
+z pull-up; nie aktywuje przy tym GPIO17 ani GPIO18. Jedynym dodatkowym kanałem
+sieciowym jest opcjonalny ZeroTier, który nie zmienia tras ani interfejsów
+PcDog; szczegóły są w [dokumentacji ZeroTier](zerotier.md). Minimalny runtime
+używa wyłącznie systemd i journald; szczegóły znajdują się w
+[dokumentacji runtime](runtime.md). Pozostałe funkcje zostaną dodane jako
+osobne etapy po ustaleniu ich wymagań.

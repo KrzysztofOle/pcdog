@@ -1,21 +1,20 @@
 # Mapowanie GPIO PcDog
 
-Ten dokument rozdziela zatwierdzone mapowanie logiczne od niepotwierdzonego
-jeszcze fizycznego okablowania. Nie jest instrukcją requestowania, odczytu ani
-ustawiania GPIO.
+Ten dokument opisuje zatwierdzone mapowanie i aktualny stan weryfikacji płytki.
+Nie jest instrukcją samodzielnego requestowania, odczytu ani ustawiania GPIO.
 
 ## CURRENT BOARD — 4 SIGNALS
 
-Aktualna płytka PcDog jest w trakcie lutowania. Poniższe numery BCM są decyzją
-Human Authority. Numery fizycznych pinów 40-pinowego headera zweryfikowano z
-[dokumentacją GPIO Raspberry Pi](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#gpio-and-the-40-pin-header).
+Poniższe numery BCM są źródłem prawdy dla aktualnej płytki PcDog. Numery
+fizycznych pinów 40-pinowego headera zweryfikowano z [dokumentacją GPIO
+Raspberry Pi](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#gpio-and-the-40-pin-header).
 
 | Signal | Direction względem Raspberry Pi | BCM GPIO | Physical pin | Rola elektryczna | Physical wiring confirmed |
 | --- | --- | --- | --- | --- | --- |
-| POWER control | OUTPUT | GPIO17 | 11 | GPIO → 680 Ω → LED transoptora → GND | ACTIVE-HIGH CONFIRMED |
-| RESET control | OUTPUT | GPIO18 | 12 | GPIO → 680 Ω → LED transoptora → GND | ACTIVE-HIGH CONFIRMED |
-| POWER LED monitor | INPUT | GPIO19 | 35 | transoptor → GPIO input | IDENTITY CONFIRMED |
-| HDD LED monitor | INPUT | GPIO20 | 38 | transoptor → GPIO input | IDENTITY CONFIRMED |
+| POWER control | OUTPUT | GPIO17 | 11 | GPIO → 680 Ω → LED transoptora T1 → GND | ACTIVE-HIGH; controlled loop PASS |
+| RESET control | OUTPUT | GPIO18 | 12 | GPIO → 680 Ω → LED transoptora T2 → GND | ACTIVE-HIGH; controlled loop PASS |
+| POWER LED monitor | INPUT | GPIO19 | 35 | open-collector transoptora T3 → GPIO input | active-low pull-up; controlled loop PASS |
+| HDD LED monitor | INPUT | GPIO20 | 38 | open-collector transoptora T4 → GPIO input | active-low pull-up; controlled loop PASS |
 
 GPIO19 i GPIO20 są wejściami transoptorów open-collector aktywnymi stanem
 LOW. `pcdog-gpio-input-init.service` trwałe ustawia dla nich `input pull-up`
@@ -23,23 +22,27 @@ przed startem agenta, a każdy odczyt `gpioget` żąda `pull-up` oraz
 `--active-low`. Stan wysoki jest więc elektrycznie nieaktywny, a niski oznacza
 aktywny POWER LED lub HDD.
 
-Human Authority potwierdził fizyczną tożsamość torów. To nie jest jednak
-potwierdzenie wszystkich poziomów napięć, polaryzacji wejść monitorujących ani
-bezpieczeństwa elektrycznego; każdy z tych faktów wymaga osobnego pomiaru na
-rzeczywistej płytce.
+GPIO16 nie jest częścią aktualnego mapowania PcDog i nie jest kanałem POWER,
+RESET ani monitora.
 
-### Stan statyczny PcDog1
+Kontrolowany test płytki z 2026-09-13 potwierdził oba tory, aktywność LOW
+monitorów, brak cross-talk oraz wymuszanie bezpiecznego LOW przez diagnostyczne
+OFF. Pełny, trwały zapis znajduje się w [raporcie testu płytki](gpio-controlled-board-test-2026-09-13.md).
+Test nie obejmował rzeczywistej płyty głównej PC: PC nie był podłączony do
+POWER ani RESET.
 
-W inspekcji `gpioinfo` dla `pinctrl-bcm2835` (54 linie) GPIO17, GPIO18,
+### Historyczna inspekcja statyczna PcDog1
+
+Poniższa obserwacja pochodzi z etapu przed wdrożeniem runtime i przed
+kontrolowanym testem płytki; zachowano ją jako kontekst historyczny, nie opis
+obecnego stanu. W inspekcji `gpioinfo` dla `pinctrl-bcm2835` (54 linie) GPIO17, GPIO18,
 GPIO19 i GPIO20 nie miały consumera i występowały jako input. Nie znaleziono
 odwołań do nich w konfiguracji PcDog ani aktywnego SPI1. Każda z tych linii ma
 jednak alternatywną funkcję SPI1: odpowiednio CE1, CE0, MISO i MOSI. Przyszłe
 włączenie SPI1 albo odpowiedniego overlayu wymaga ponownej oceny konfliktu.
 
-Brak consumera jest tylko obserwacją aktualnego systemu, nie dowodem
-bezpieczeństwa elektrycznego ani rezerwacją linii. Linie są kandydatami do
-przyszłego użycia PcDog, pod warunkiem osobnego etapu uprawnień, pomiaru i
-kontrolowanego testu wejścia.
+Brak consumera był tylko obserwacją tamtego systemu, nie dowodem bezpieczeństwa
+elektrycznego ani rezerwacją linii.
 
 ## FUTURE BOARD — 6 SIGNALS
 
@@ -67,8 +70,8 @@ utrzymujący linię.
 
 **FAIL-CLOSED POLARITY:** w zwykłej instalacji GPIO17 i GPIO18 pozostają INPUT,
 a `pulse_power`/`pulse_reset` zwracają `ACTION_NOT_ENABLED`. Nie ma domyślnej
-polaryzacji. Dopiero udokumentowane, fizyczne potwierdzenie poziomu aktywnego
-obu transoptorów może utworzyć plik root-only
+polaryzacji. Kontrolowany test płytki potwierdził dla jej dwóch wyjść
+ACTIVE-HIGH, ale runtime wymaga nadal jawnej lokalnej konfiguracji root-only
 `/etc/pcdog/hardware-control.conf` o dokładnej treści jednej z poniższych:
 
 ```text
@@ -83,8 +86,9 @@ PCDOG_CONTROL_POLARITY=active-low
 
 Następnie wymagany jest kontrolowany restart tylko
 `pcdog-hardware-agent.service` i ponowne sprawdzenie baseline wejść. Ta
-konfiguracja jest decyzją sprzętową, nie może pochodzić od klienta IPC. Bez
-takiego potwierdzenia nie wolno wykonywać live pulse.
+konfiguracja jest decyzją sprzętową, nie może pochodzić od klienta IPC.
+Potwierdzenie na obwodzie testowym nie zastępuje oddzielnej decyzji Human
+Authority o sterowaniu rzeczywistym PC.
 
 `python3 -m pcdog_runtime.hardware_loopback --channel power` lub `--channel
 reset` jest narzędziem jednorazowej obserwacji: przez socket wysyła dokładnie
@@ -121,3 +125,18 @@ Human Authority potwierdził fizyczną tożsamość wszystkich czterech torów:
 GPIO17 → POWER SW, GPIO18 → RESET SW, GPIO19 ← POWER LED, GPIO20 ← HDD LED.
 Nie zastępuje to kontrolowanego testu działania PC. POWER i RESET są
 operacjami podwyższonego ryzyka; to mapowanie nie upoważnia do ich wykonania.
+
+## Status testów i następny etap
+
+**COMPLETE / PASS:** kontrolowany test płytki GPIO z 2026-09-13, opisany w
+[raporcie](gpio-controlled-board-test-2026-09-13.md), potwierdził POWER loop
+GPIO17→GPIO19 oraz RESET loop GPIO18→GPIO20, bez cross-talk i z bezpiecznym
+OFF. Końcowy stan to GPIO17/18 LOW oraz GPIO19/20 HIGH.
+
+Kolejny etap ma zachować kolejność **observation → simulation → controlled
+test → real control**:
+
+1. obserwacyjny test rzeczywistych POWER LED i HDD LED na PC, bez sterowania
+   POWER/RESET;
+2. osobny, kontrolowany test POWER CONTROL z rzeczywistą płytą główną;
+3. RESET CONTROL dopiero po powodzeniu poprzedniego etapu.

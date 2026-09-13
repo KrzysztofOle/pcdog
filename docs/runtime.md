@@ -3,8 +3,10 @@
 Instalator runtime instaluje `pcdog.service` jako Web API i Web Panel,
 `pcdog-system-agent.service` jako oddzielony agent statusowy,
 `pcdog-hardware-agent.service` jako agent wejść GPIO oraz
-`pcdog-network-agent.service` jako wąsko ograniczony agent Wi-Fi. Panel nie
-używa GPIO i nie steruje komputerem; nie zawiera POWER, RESET ani Control API.
+`pcdog-network-agent.service` jako wąsko ograniczony agent Wi-Fi. Instaluje
+również zależny `pcdog-gpio-input-init.service`, który trwałe inicjalizuje
+pull-up wejść monitorujących przed startem hardware-agenta. Panel nie używa
+GPIO i nie steruje komputerem; nie zawiera POWER, RESET ani Control API.
 
 ## Czysty model domenowy i State Engine
 
@@ -40,6 +42,10 @@ zakończonego powodzeniem unitu inicjalizacyjnego (`Requires=` i `After=`), wię
 nie uruchamia się bez poprawnego ustawienia wejść. Inicjalizator może wyłącznie
 mapować `/dev/gpiomem` i skonfigurować GPIO19/20; długo działający agent
 zachowuje `ProtectKernelTunables=yes` oraz pozostały hardening.
+
+Kontrolowany test płytki z 2026-09-13 potwierdził tę konfigurację dla obu
+monitorów i oba tory sterowania na odłączonym od PC obwodzie 3.3 V. Wynik oraz
+ograniczenia znajdują się w [raporcie testu GPIO](gpio-controlled-board-test-2026-09-13.md).
 
 Socket przyjmuje zawsze tylko `status` i `read_inputs`, a przy jawnie włączonym
 sterowaniu dodatkowo wyłącznie `pulse_power` oraz `pulse_reset`. Nie ma API z
@@ -230,11 +236,12 @@ Zwykłe uruchomienie:
 sudo ./scripts/bootstrap.sh
 ```
 
-instaluje runtime w `/opt/pcdog/bin`, jednostkę w
-`/etc/systemd/system/pcdog.service`, włącza autostart i uruchamia usługę.
-Przy kolejnym bootstrapie usługa nie jest restartowana, jeśli pliki runtime i
-jednostka nie uległy zmianie. Po zmianie któregoś z tych plików bootstrap
-wykonuje `daemon-reload` (dla unitu) oraz restart usługi.
+instaluje runtime w `/opt/pcdog/bin`, jednostki w
+`/etc/systemd/system/`, włącza autostart i uruchamia usługi PcDog, w tym
+`pcdog-gpio-input-init.service` przed hardware-agentem. Przy kolejnym
+bootstrapie usługi nie są restartowane, jeśli pliki runtime i jednostki nie
+uległy zmianie. Po zmianie któregoś z tych plików bootstrap wykonuje
+`daemon-reload` (dla unitu) i restartuje zależne usługi w wymaganej kolejności.
 
 Tryb:
 
