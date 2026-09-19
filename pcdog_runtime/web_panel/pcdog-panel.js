@@ -85,11 +85,13 @@ function renderSystemAgent(agent) {
   setBadge("system-agent-status", agent.status);
   text("system-agent-actions", agent.status === "READY" && agent.actions_enabled === false ? "wyłączone (etap przygotowawczy)" : "brak danych");
 }
-function wifiMessage(status) {
-  const messages = { IDLE: "Brak aktywnej zmiany Wi-Fi.", IN_PROGRESS: "Trwa próba połączenia. Panel może za chwilę przestać być dostępny.", SUCCEEDED: "Nowa sieć została potwierdzona przez NetworkManager i ma adres IP.", ROLLED_BACK: "Nie udało się połączyć; przywrócono poprzedni profil Wi-Fi.", ROLLBACK_FAILED: "Nie udało się połączyć ani przywrócić poprzedniego profilu. Użyj kanału recovery.", FAILED: "Nie udało się rozpocząć połączenia; nie było profilu do przywrócenia." };
+function wifiMessage(result) {
+  const status = result.status;
+  const messages = { IDLE: "Brak aktywnej zmiany Wi-Fi.", IN_PROGRESS: "Trwa próba połączenia. Panel może za chwilę przestać być dostępny.", SUCCEEDED: "Nowa sieć została potwierdzona, zapisana trwale i ma adres IP.", ROLLED_BACK: "Nie udało się połączyć; przywrócono poprzedni profil Wi-Fi.", ROLLBACK_FAILED: "Nie udało się połączyć ani przywrócić poprzedniego profilu. Użyj kanału recovery.", FAILED: "Nie udało się rozpocząć połączenia; nie było profilu do przywrócenia." };
+  if (status === "ROLLED_BACK" && result.reason === "PERSIST_FAILED") return "Połączenie zostało potwierdzone, lecz trwały zapis profilu się nie udał; przywrócono poprzedni profil Wi-Fi.";
   return messages[status] || "Stan zmiany Wi-Fi jest niedostępny.";
 }
-function renderWifiStatus(result) { text("wifi-status", wifiMessage(result.status)); }
+function renderWifiStatus(result) { text("wifi-status", wifiMessage(result)); }
 function renderWifiScan(result) {
   const form = document.getElementById("wifi-connect-form"); const select = document.getElementById("wifi-network"); select.replaceChildren();
   scannedNetworks = result.status === "AVAILABLE" && Array.isArray(result.networks) ? result.networks : [];

@@ -31,8 +31,8 @@ from pcdog_runtime.network_agent_client import request_network_agent
 
 
 class FakeExecutor:
-    def __init__(self, *, failure: str | None = None, confirmed: bool = True, rollback_fails: bool = False, block: Event | None = None) -> None:
-        self.failure, self.confirmed, self.rollback_fails, self.block = failure, confirmed, rollback_fails, block
+    def __init__(self, *, failure: str | None = None, confirmed: bool = True, persist_fails: bool = False, rollback_fails: bool = False, block: Event | None = None) -> None:
+        self.failure, self.confirmed, self.persist_fails, self.rollback_fails, self.block = failure, confirmed, persist_fails, rollback_fails, block
         self.rollback_calls: list[PreviousConnection] = []
         self.commands: list[tuple[str, object]] = []
 
@@ -53,6 +53,11 @@ class FakeExecutor:
     def is_confirmed(self, ssid: str, bssid: str | None) -> bool:
         self.commands.append(("confirmed", (ssid, bssid)))
         return self.confirmed
+
+    def persist_connection(self) -> None:
+        self.commands.append(("persist", None))
+        if self.persist_fails:
+            raise NetworkAgentError("PERSIST_FAILED")
 
     def rollback(self, previous: PreviousConnection) -> None:
         self.rollback_calls.append(previous)
@@ -125,6 +130,31 @@ class NetworkAgentTests(unittest.TestCase):
         self.assertEqual(received[1][0], ["nmcli", "--ask", "--wait", "30", "connection", "up", "id", temporary, "ifname", "wlan0"])
         self.assertEqual(received[1][1], "never-in-argv\n")
 
+    def test_nmcli_persist_promotes_only_the_temporary_profile_and_enables_autoconnect(self) -> None:
+        executor = NmcliExecutor()
+        executor._temporary_connection = "pcdog-wifi-test"
+        received: list[tuple[list[str], str | None]] = []
+
+        def run(arguments, *, timeout, input_text=None):
+            received.append((arguments, input_text))
+            from subprocess import CompletedProcess
+            return CompletedProcess(arguments, 0, "", "")
+
+        executor._run = run  # type: ignore[method-assign]
+        executor.persist_connection()
+        self.assertEqual(received, [([
+            "nmcli", "connection", "modify", "id", "pcdog-wifi-test", "connection.autoconnect", "yes",
+        ], None)])
+        self.assertIsNone(executor._temporary_connection)
+
+    def test_nmcli_persist_failure_keeps_profile_available_for_cleanup_without_secret(self) -> None:
+        executor = NmcliExecutor()
+        executor._temporary_connection = "pcdog-wifi-test"
+        executor._run = lambda *_, **__: (_ for _ in ()).throw(NetworkAgentError("CONNECTION_FAILED"))  # type: ignore[method-assign]
+        with self.assertRaisesRegex(NetworkAgentError, "^PERSIST_FAILED$"):
+            executor.persist_connection()
+        self.assertEqual(executor._temporary_connection, "pcdog-wifi-test")
+
     def test_nmcli_connection_add_argv_places_bssid_after_delimiter(self) -> None:
         received = self._connect_commands("AA:BB:CC:DD:EE:FF", ssid="literal;not-a-shell-command")
         arguments = received[0][0]
@@ -157,7 +187,7 @@ class NetworkAgentTests(unittest.TestCase):
         self.assertTrue(executor.is_confirmed("Home", "AA:BB:CC:DD:EE:FF"))
         self.assertEqual(received[-1], ["nmcli", "--get-values", "IP4.ADDRESS", "device", "show", "wlan0"])
 
-    def test_single_job_success_requires_network_manager_and_ip_confirmation(self) -> None:
+    def test_single_job_success_verifies_then_persists_before_reporting_success(self) -> None:
         executor = FakeExecutor(confirmed=True); manager = WifiJobManager(executor)
         started = manager.start("Domowa", "AA:BB:CC:DD:EE:FF", "secret-pass")
         self.assertEqual(started["status"], "STARTED")
@@ -165,6 +195,7 @@ class NetworkAgentTests(unittest.TestCase):
         self.assertEqual(result["status"], "SUCCEEDED")
         self.assertNotIn("secret-pass", json.dumps(result))
         self.assertIn(("confirmed", ("Domowa", "AA:BB:CC:DD:EE:FF")), executor.commands)
+        self.assertLess(executor.commands.index(("confirmed", ("Domowa", "AA:BB:CC:DD:EE:FF"))), executor.commands.index(("persist", None)))
 
     def test_second_active_job_is_rejected_as_busy(self) -> None:
         release = Event(); manager = WifiJobManager(FakeExecutor(block=release))
@@ -179,6 +210,8 @@ class NetworkAgentTests(unittest.TestCase):
                 self.assertEqual(result["status"], "ROLLED_BACK")
                 self.assertEqual(result["reason"], code)
                 self.assertEqual(executor.rollback_calls, [PreviousConnection("wlan0", "old-profile")])
+                self.assertNotIn(("persist", None), executor.commands)
+                self.assertIn(("cleanup", None), executor.commands)
 
     @staticmethod
     def _started_manager(executor: FakeExecutor) -> WifiJobManager:
@@ -189,8 +222,19 @@ class NetworkAgentTests(unittest.TestCase):
         result = await_done(manager)
         self.assertEqual(result["status"], "ROLLED_BACK")
         self.assertEqual(result["reason"], "CONNECTION_NOT_CONFIRMED")
+        self.assertNotIn(("persist", None), executor.commands)
+        self.assertIn(("cleanup", None), executor.commands)
         broken = FakeExecutor(failure="TIMEOUT", rollback_fails=True)
         self.assertEqual(await_done(self._started_manager(broken))["status"], "ROLLBACK_FAILED")
+
+    def test_persist_failure_rolls_back_and_does_not_report_success_or_secret(self) -> None:
+        executor = FakeExecutor(persist_fails=True)
+        result = await_done(self._started_manager(executor))
+        self.assertEqual(result["status"], "ROLLED_BACK")
+        self.assertEqual(result["reason"], "PERSIST_FAILED")
+        self.assertEqual(executor.rollback_calls, [PreviousConnection("wlan0", "old-profile")])
+        self.assertIn(("cleanup", None), executor.commands)
+        self.assertNotIn("password1", json.dumps(result))
 
     def test_closed_protocol_and_unix_socket_do_not_expose_secret(self) -> None:
         executor = FakeExecutor(); manager = WifiJobManager(executor)

@@ -152,17 +152,33 @@ hasło w JSON body. Zmiana wymaga sesji, CSRF i zgodnego `Origin`; nie przyjmuje
 interfejsu, profilu ani dowolnych argumentów wykonawczych.
 
 Hasło Wi-Fi nie może pojawić się w URL, odpowiedzi, logach ani wyniku joba.
-Network-agent uruchamia `nmcli` bez powłoki. Tworzy kandydatowy profil wyłącznie
-w pamięci NetworkManagera (`save no`), a sekret podaje przez stdin `nmcli --ask`;
-nigdy przez argv ani plik trwały. Dopuszcza jeden aktywny job i przechowuje wynik
-tylko w pamięci, maksymalnie przez 5 minut. Oznacza to, że nowa konfiguracja nie
-przetrwa restartu Raspberry Pi — trwałe zapisywanie poświadczeń wymaga osobnego,
-świadomie zatwierdzonego etapu.
+Network-agent uruchamia `nmcli` bez powłoki. Workflow jest następujący:
+
+```text
+temporary connection (`save no`)
+            ↓
+verification (aktywny SSID/BSSID i IPv4)
+            ↓
+persist (`connection modify`, `connection.autoconnect=yes`)
+            ↓
+SUCCESS
+```
+
+Kandydat pozostaje wyłącznie w pamięci NetworkManagera aż do zakończonej
+powodzeniem verification. Sekret jest podawany przez stdin `nmcli --ask`, nigdy
+przez argv, log ani repozytorium. Dopiero persist zapisuje potwierdzony profil
+przez NetworkManager i ustawia `autoconnect=yes`, więc profil może zostać użyty
+automatycznie po restarcie Raspberry Pi. Agent dopuszcza jeden aktywny job i
+przechowuje jego wynik tylko w pamięci, maksymalnie przez 5 minut.
 
 Przed próbą połączenia agent zapamiętuje aktywny profil Wi-Fi. Sukces wymaga
 potwierdzenia aktywnego SSID/BSSID przez NetworkManager i adresu IPv4. Błędne
 hasło, błąd lub timeout NetworkManagera albo brak potwierdzenia uruchamiają
 próbę przywrócenia poprzedniego profilu; istniejące profile nie są usuwane.
+Jeżeli verification przejdzie, ale persist zawiedzie, job nie zwraca
+`SUCCEEDED`: raportuje `PERSIST_FAILED`, próbuje rollback do poprzedniego
+profilu i usuwa kandydatowy profil, aby nie pozostawić nowej trwałej
+konfiguracji. Niepowodzenie samego rollback pozostaje `ROLLBACK_FAILED`.
 Telefon lub komputer może wymagać połączenia z nową siecią i ponownego otwarcia
 panelu. USB pozostaje kanałem recovery, bez założenia obsługi USB Ethernet przez
 telefon.

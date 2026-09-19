@@ -395,6 +395,10 @@ class WebPanelSourceTests(unittest.TestCase):
         self.assertIn("if (refreshInFlight || !csrfToken) return", self.javascript)
         self.assertIn("window.setInterval(refresh, CONFIG.pollingIntervalMs)", self.javascript)
 
+    def test_wifi_persistence_failure_has_a_distinct_panel_message(self) -> None:
+        self.assertIn("PERSIST_FAILED", self.javascript)
+        self.assertIn("zapis profilu się nie udał", self.javascript)
+
     def test_mobile_navigation_and_history_contract(self) -> None:
         self.assertIn('window.addEventListener("hashchange"', self.javascript)
         self.assertIn('section.hidden = section.dataset.view !== view', self.javascript)

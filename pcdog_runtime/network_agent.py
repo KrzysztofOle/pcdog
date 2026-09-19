@@ -49,6 +49,7 @@ class NetworkManagerExecutor(Protocol):
     def active_wifi(self) -> PreviousConnection | None: ...
     def connect(self, ssid: str, bssid: str | None, password: str, timeout: int) -> None: ...
     def is_confirmed(self, ssid: str, bssid: str | None) -> bool: ...
+    def persist_connection(self) -> None: ...
     def rollback(self, previous: PreviousConnection) -> None: ...
     def cleanup_failed_connection(self) -> None: ...
 
@@ -169,6 +170,27 @@ class NmcliExecutor:
         addresses = self._run(["nmcli", "--get-values", "IP4.ADDRESS", "device", "show", active.device], timeout=5)
         return any(line.strip() for line in addresses.stdout.splitlines())
 
+    def persist_connection(self) -> None:
+        """Zapisuje dopiero potwierdzony profil i włącza autoconnect.
+
+        Brak ``--temporary`` jest celowy: według kontraktu nmcli modyfikacja
+        profilu zapisuje go przez aktywny settings plugin NetworkManagera.
+        Dotychczasowy ``save no`` nadal chroni fazę connect i verification.
+        """
+        if self._temporary_connection is None:
+            raise NetworkAgentError("PERSIST_FAILED")
+        try:
+            self._run(
+                ["nmcli", "connection", "modify", "id", self._temporary_connection,
+                 "connection.autoconnect", "yes"],
+                timeout=5,
+            )
+        except Exception as error:
+            # The client must not receive details from nmcli, which could
+            # contain host-specific data or a secret supplied by an agent.
+            raise NetworkAgentError("PERSIST_FAILED") from error
+        self._temporary_connection = None
+
     def rollback(self, previous: PreviousConnection) -> None:
         self._run(["nmcli", "--wait", str(CONNECT_TIMEOUT_SECONDS), "connection", "up", "id", previous.profile, "ifname", previous.device], timeout=CONNECT_TIMEOUT_SECONDS + 5)
 
@@ -211,6 +233,7 @@ class WifiJobManager:
             password = ""  # remove the only agent-held reference as soon as possible
             if not self._executor.is_confirmed(ssid, bssid):
                 raise NetworkAgentError("CONNECTION_NOT_CONFIRMED")
+            self._executor.persist_connection()
             result = {"status": "SUCCEEDED", "job_id": job_id, "ssid": ssid}
         except NetworkAgentError as error:
             code = error.code
