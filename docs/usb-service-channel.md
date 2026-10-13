@@ -22,9 +22,11 @@ Obsługiwane są dokładnie dwa trwałe tryby:
 | `windows` | `rndis.usb0` | Windows / Remote NDIS Compatible Device |
 | `mac` | `ecm.usb0` | macOS / CDC ECM |
 
-Nie ma trybu `auto` ani `universal`; RNDIS i ECM nigdy nie są wystawiane
-jednocześnie. Nowe i istniejące instalacje bez pliku trybu domyślnie używają
-`windows`, co zachowuje zweryfikowany Windows baseline.
+Nie ma trybu `auto` ani `universal`; produkcyjna konfiguracja przy starcie
+wystawia jedną funkcję zgodną z zapisanym trybem. Nowe i istniejące instalacje
+bez pliku trybu domyślnie używają `windows`, co zachowuje zweryfikowany Windows
+baseline. Tymczasowy eksperyment z jedną konfiguracją ECM+RNDIS opisuje sekcja
+Stage 0A poniżej; nie zmienił produkcyjnego trybu.
 
 Tryb jest przechowywany w `/etc/pcdog/usb-mode.conf` jako `mode=windows` albo
 `mode=mac`. Runtime `pcdog-usb-gadget` odczytuje go przy każdym tworzeniu
@@ -65,6 +67,50 @@ izolowany DHCP. Nie tworzy linku `os_desc/c.1` ani nie konfiguruje Microsoft OS
 descriptors dla ECM. Poprawność ConfigFS można zweryfikować po Wi-Fi; pełny test
 hosta macOS jest osobnym eksperymentem.
 
+## Stage 0A — tymczasowy composite ECM+RNDIS na macOS
+
+Eksperyment wykonano 2026-10-13 na Raspberry Pi Zero 2 W. Celem było
+sprawdzenie, czy jedna konfiguracja USB może wystawić ECM i RNDIS razem, tak
+aby host wybierał obsługiwaną funkcję bez ręcznej zmiany trwałego trybu PcDog.
+Nie wdrożono tego układu produkcyjnie.
+
+### Konfiguracja testowa
+
+- UDC `3f980000.usb`, sterownik `dwc2`; kontroler zgłaszał 7 niezerowych
+  endpointów oraz osobny endpoint kontrolny EP0.
+- Jedna konfiguracja ConfigFS `c.1`, z funkcjami w kolejności RNDIS, następnie
+  ECM.
+- `bDeviceClass=0`; funkcja RNDIS miała IAD `class=ef`, `subclass=04`,
+  `protocol=01` i Microsoft OS compatible ID `RNDIS` z sub-compatible ID
+  `5162001`.
+- Linux utworzył osobne interfejsy: `usb0` dla RNDIS i `usb1` dla ECM.
+- Testowy ECM używał odrębnej podsieci `172.23.255.0/30`. DHCP przydzielił
+  hostowi `172.23.255.2/30` i nie ogłosił opcji routera.
+
+### Wynik macOS
+
+macOS wyenumerował jedno urządzenie high-speed z jedną konfiguracją i
+`bDeviceClass=0`. Sterownik `AppleUserECM` obsłużył funkcję ECM jako interfejs
+`en12`. Mac nie utworzył osobnego interfejsu sieciowego ani aktywnego sterownika
+RNDIS. Nie była potrzebna ręczna instalacja sterownika.
+
+ECM przeszedł DHCP, ping, SSH oraz HTTP Web UI (200). SSH zwrócił hostname
+`PcDog1`. Default route Maca pozostał przez Wi-Fi (`192.168.7.1`, `en1`), poza
+USB. ZeroTier pozostał `ONLINE` i zapewniał kanał kontrolny przez cały test.
+
+### Rollback i rezultat
+
+Przed zmianą UDC uzbrojono 300-sekundowy timer systemd, który uruchamiał
+rollback przez Bash, niezależnie od enumeracji hosta. Po udanym teście rollback
+uruchomiono ręcznie przed upływem timera. Usunął testowy gadget i tymczasowy
+DHCP, a następnie przywrócił produkcyjny tryb `mac` / ECM. Końcowo aktywne były
+`ecm.usb0`, UDC `3f980000.usb`, `usb0=172.23.254.1/30` i produkcyjny DHCP USB;
+Mac wrócił do `172.23.254.2/30`. Trwały plik trybu nie był zmieniany.
+
+**Wniosek:** wynik uzasadnia osobny fizyczny test Stage 0B na Windows 11.
+Windows Stage 0B nie został wykonany, a przypisanie sterownika RNDIS na Windows
+pozostaje niezweryfikowane.
+
 ## Instalacja i weryfikacja
 
 Repozytoryjny installer instaluje runtime, komendę `pcdog-usb-mode`, unity,
@@ -82,5 +128,8 @@ Do natychmiastowej zmiany trybu służy wyłącznie `pcdog-usb-mode`.
 
 ## Następne eksperymenty
 
-- `USB-MODE-SWITCH-MAC-T01`: pełny test hosta macOS po przełączeniu na `mac`.
+- `USB-MODE-SWITCH-MAC-T01`: osobny test pojedynczej funkcji `ecm.usb0` po
+  przełączeniu trybu na `mac`.
 - `USB-MODE-SWITCH-REBOOT-T01`: persistence ostatnio wybranego trybu po reboot.
+- `USB-COMPOSITE-STAGE0B-WIN-T01`: osobny test hosta Windows 11 dla composite
+  ECM+RNDIS; Stage 0B nie został rozpoczęty.
