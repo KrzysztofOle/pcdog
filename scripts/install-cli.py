@@ -26,6 +26,7 @@ LEGACY_LAUNCHER = (
     b"exec /usr/bin/python3 -m pcdog_runtime.cli \"$@\"\n"
 )
 MODULES = ("__init__.py", "cli.py", "network_status.py")
+CLI_PACKAGE_INIT = b'"""Minimal package initializer for the standalone PcDog CLI."""\n'
 
 
 class InstallError(RuntimeError):
@@ -82,6 +83,10 @@ class CliInstaller:
             raise InstallError("wymagany jest Python 3.9 lub nowszy")
         files: dict[str, bytes] = {}
         for name in MODULES:
+            if name == "__init__.py":
+                # The full runtime package initializer imports unrelated modules.
+                files[name] = CLI_PACKAGE_INIT
+                continue
             path = self.layout.source / name
             try:
                 files[name] = path.read_bytes()
@@ -294,7 +299,9 @@ class CliInstaller:
         target = self._link_target(self.current)
         if target is None:
             raise InstallError("brak aktywnego wydania CLI")
-        expected = self._digest({name: (self.layout.source / name).read_bytes() for name in MODULES})
+        expected_files = self._source_files()
+        expected_files.pop(".launcher")
+        expected = self._digest(expected_files)
         if target != f"releases/{expected}":
             raise InstallError("aktywne wydanie CLI nie odpowiada bieżącym źródłom")
         self._check_regular_file(self.layout.launcher, expected=launcher, mode=0o755)

@@ -6,6 +6,7 @@ import importlib.util
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -49,6 +50,19 @@ class CliInstallerTests(unittest.TestCase):
         self.installer.check()
         self.assertEqual(self.launcher.read_bytes(), self.launcher_source.read_bytes())
         self.assertEqual(os.stat(self.launcher).st_mode & 0o777, 0o755)
+
+    def test_installed_package_is_minimal_and_help_runs_from_release(self):
+        self.installer.install()
+        release = self.root / "current"
+        package_init = release / "pcdog_runtime/__init__.py"
+        self.assertEqual(package_init.read_bytes(), installer_module.CLI_PACKAGE_INIT)
+        environment = {**os.environ, "PYTHONPATH": str(release)}
+        result = subprocess.run(
+            [sys.executable, "-m", "pcdog_runtime.cli", "help"],
+            cwd=self.base, env=environment, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage: pcdog", result.stdout)
 
     def test_update_keeps_previous_release_and_rollback_swaps_back(self):
         self.installer.install()
