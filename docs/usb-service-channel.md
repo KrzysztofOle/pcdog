@@ -41,7 +41,14 @@ pcdog-usb-mode status
 Zmiana trybu zapisuje konfigurację, kontrolowanie odłącza UDC, usuwa poprzednią
 funkcję i linki ConfigFS, buduje jedną właściwą funkcję i ponownie wiąże UDC.
 Host USB musi chwilowo ponownie wyenumerować urządzenie. Nie wymaga to rebootu
-PcDog1; do wykonania przełączenia używaj SSH po Wi-Fi.
+PcDog1. CLI udostępnia `pcdog usb mode windows|mac`; przed delegacją do tego
+samego `pcdog-usb-mode` porównuje trasę aktywnej sesji SSH z rzeczywistą trasą
+do hosta USB. Zablokuje zmianę przy SSH przez USB, braku `SSH_CONNECTION` lub
+niejednoznacznych trasach. SSH przez Wi-Fi albo ZeroTier może być użyte tylko,
+gdy aktywna sesja i routing potwierdzają niezależny kanał; sam profil
+ZeroTier nie wystarcza. Nie ma trybu wymuszającego. Bez CLI można wywołać
+`sudo pcdog-usb-mode <tryb>` bezpośrednio wyłącznie po niezależnej weryfikacji
+trasy administracyjnej.
 
 `status` pokazuje skonfigurowany tryb, aktywną funkcję USB, stan UDC, stan
 `usb0` i adres IPv4 PcDog1.

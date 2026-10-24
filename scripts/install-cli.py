@@ -25,7 +25,7 @@ LEGACY_LAUNCHER = (
     b"export PYTHONPATH='/opt/pcdog/lib'\n"
     b"exec /usr/bin/python3 -m pcdog_runtime.cli \"$@\"\n"
 )
-MODULES = ("__init__.py", "cli.py", "network_status.py")
+MODULES = ("__init__.py", "cli.py", "network_status.py", "usb_mode.py")
 CLI_PACKAGE_INIT = b'"""Minimal package initializer for the standalone PcDog CLI."""\n'
 
 

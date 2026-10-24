@@ -9,6 +9,7 @@ import sys
 from typing import Callable, Sequence, TextIO, TypeVar
 
 from .network_status import read_network_status
+from .usb_mode import change_usb_mode
 
 
 HEALTH_CHECK = "/opt/pcdog/bin/pcdog-healthcheck"
@@ -98,7 +99,7 @@ def read_usb_status() -> dict[str, object]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="pcdog", description="Odczytowa diagnostyka PcDog.")
+    parser = argparse.ArgumentParser(prog="pcdog", description="Diagnostyka i kontrolowane operacje PcDog.")
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("help", help="pokaż tę pomoc")
     commands.add_parser("status", help="podsumowanie stanu PcDog")
@@ -107,7 +108,10 @@ def build_parser() -> argparse.ArgumentParser:
     wifi = commands.add_parser("wifi", help="diagnostyka Wi-Fi")
     wifi.add_subparsers(dest="wifi_command").add_parser("profiles", help="zapisane profile Wi-Fi")
     usb = commands.add_parser("usb", help="diagnostyka USB Service Channel")
-    usb.add_subparsers(dest="usb_command").add_parser("status", help="stan trybu i gadgetu USB")
+    usb_commands = usb.add_subparsers(dest="usb_command")
+    usb_commands.add_parser("status", help="stan trybu i gadgetu USB")
+    mode = usb_commands.add_parser("mode", help="zmień tryb hosta USB po kontroli kanału SSH")
+    mode.add_argument("mode", choices=("windows", "mac"), help="windows (RNDIS) albo mac (ECM)")
     return parser
 
 
@@ -179,6 +183,8 @@ def run_cli(argv: Sequence[str] | None = None, *, output: TextIO | None = None,
             for key, value in values.items():
                 print(f"  {key}: {value}", file=output)
         return 0
+    if args.command == "usb" and args.usb_command == "mode":
+        return change_usb_mode(args.mode, output=output)
     if args.command == "status":
         results = [
             _safe_call(health, {"status": "UNAVAILABLE", "detail": "health check niedostępny"}),

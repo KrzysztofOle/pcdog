@@ -64,6 +64,18 @@ class CliInstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("usage: pcdog", result.stdout)
 
+    def test_installed_release_contains_mode_guard_and_cli_can_parse_mode(self):
+        self.installer.install()
+        release = self.root / "current"
+        self.assertTrue((release / "pcdog_runtime/usb_mode.py").is_file())
+        result = subprocess.run(
+            [sys.executable, "-m", "pcdog_runtime.cli", "usb", "mode", "mac", "--help"],
+            cwd=self.base, env={**os.environ, "PYTHONPATH": str(release)}, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("windows", result.stdout)
+        self.assertIn("mac", result.stdout)
+
     def test_update_keeps_previous_release_and_rollback_swaps_back(self):
         self.installer.install()
         first = os.readlink(self.root / "current")

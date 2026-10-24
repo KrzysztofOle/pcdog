@@ -57,6 +57,10 @@ nie wymagają `sudo` i nie zmieniają konfiguracji. Szczegóły prezentacji stan
 statusów wyjścia i instalacji opisuje [dokumentacja runtime](docs/runtime.md).
 CLI można też instalować lub aktualizować niezależnie przez
 `sudo ./scripts/install-cli.sh`; ta ścieżka nie zarządza usługami.
+CLI zachowuje odczytowe `pcdog usb status` i udostępnia kontrolowaną zmianę
+`pcdog usb mode windows|mac`. Przed delegacją do root-owned
+`pcdog-usb-mode` sprawdza aktywną trasę SSH; szczegóły blokad i wymaganej
+niezależnej ścieżki administracyjnej opisuje [dokumentacja runtime](docs/runtime.md).
 
 ## USB service channel SSH dla PcDog
 

@@ -257,6 +257,8 @@ pcdog status
 pcdog network status
 pcdog wifi profiles
 pcdog usb status
+pcdog usb mode windows
+pcdog usb mode mac
 ```
 
 `status` agreguje health check runtime, odczyt interfejsów z
@@ -267,9 +269,20 @@ Wyjście rozróżnia `OK`, `BRAK DANYCH`, `NIEDOSTĘPNE` i `BŁĄD`; kod 0 oznac
 że wszystkie wymagane źródła danego polecenia odpowiedziały, kod 1 brak lub
 błąd źródła, a kod 2 błędną składnię.
 
+`pcdog usb status` jest odczytowe. Zmiana trybu jest operacją zmieniającą stan:
+CLI sprawdza `SSH_CONNECTION` oraz rzeczywiste trasy `ip route get` do klienta
+i kanału USB, po czym blokuje zmianę, gdy trasa SSH używa USB albo dane są
+niepełne lub sprzeczne. Sama nazwa interfejsu, profil NetworkManagera ani
+konfiguracja ZeroTier nie stanowią potwierdzenia kanału odzyskiwania. Po
+pozytywnej kontroli CLI deleguje wybrany tryb do istniejącego, root-owned
+`/usr/local/sbin/pcdog-usb-mode`; nie implementuje ConfigFS. Brak SSH lub `ip`,
+niejednoznaczna trasa, brak przełącznika, odmowa uprawnień oraz błąd operacji
+kończą się kodem 1. Nie ma opcji wymuszającej. Zmiana może chwilowo rozłączyć
+host USB; korzystaj z niezależnego SSH poza USB.
+
 Lista Wi-Fi zawiera wyłącznie nazwę profilu i aktywne urządzenie; CLI nie pyta
-o hasła, sekrety ani UUID. Polecenia są odczytowe i nie udostępniają skanowania,
-zmiany profili, przełączania USB ani sterowania POWER/RESET.
+o hasła, sekrety ani UUID. Polecenia diagnostyczne są odczytowe i nie
+udostępniają skanowania, zmiany profili ani sterowania POWER/RESET.
 
 ### Samodzielna instalacja i rollback CLI
 
@@ -284,7 +297,7 @@ Instalator wymaga Pythona 3.9 lub nowszego oraz uprawnień root do zapisu w
 `/opt/pcdog-cli` i `/usr/local/bin/pcdog`. Zależności diagnostyczne (`nmcli`,
 `pcdog-healthcheck`, `pcdog-usb-mode`) sprawdza informacyjnie; ich brak nie
 blokuje instalacji, a odpowiednia sekcja CLI raportuje `NIEDOSTĘPNE`. Każde
-wydanie przechowuje kopię tylko trzech modułów potrzebnych CLI w katalogu
+wydanie przechowuje kopię minimalnych modułów potrzebnych CLI w katalogu
 wersjonowanym według sumy SHA-256. Aktywne wydanie wskazuje atomowy link
 `/opt/pcdog-cli/current`. Powtórna instalacja tej samej wersji jest bez zmian.
 
