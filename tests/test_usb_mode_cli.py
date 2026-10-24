@@ -18,8 +18,8 @@ from pcdog_runtime import cli, usb_mode
 class UsbModeCliTests(unittest.TestCase):
     def routes(self, session_dev="wlan0", usb_dev="usb0", *, session_src="192.0.2.10", usb_src="172.23.254.1"):
         return [
-            subprocess.CompletedProcess([], 0, json.dumps([{"dev": session_dev, "src": session_src}]), ""),
-            subprocess.CompletedProcess([], 0, json.dumps([{"dev": usb_dev, "src": usb_src}]), ""),
+            subprocess.CompletedProcess([], 0, json.dumps([{"dev": session_dev, "from": session_src}]), ""),
+            subprocess.CompletedProcess([], 0, json.dumps([{"dev": usb_dev, "prefsrc": usb_src}]), ""),
         ]
 
     def invoke_switch(self, mode="mac", *, route_results=None, connection="198.51.100.8 50000 192.0.2.10 22",

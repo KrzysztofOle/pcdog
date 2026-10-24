@@ -59,9 +59,11 @@ def _session_uses_usb() -> tuple[bool | None, str]:
     if session is None or usb is None:
         return None, "nie można wiarygodnie ustalić tras SSH i USB; zmiana zablokowana"
     session_dev = session.get("dev")
-    session_src = session.get("src", session.get("prefsrc"))
+    # iproute2 can report the explicitly requested source as `from` rather
+    # than `src`/`prefsrc` when route get was constrained with `from ADDRESS`.
+    session_src = session.get("src") or session.get("prefsrc") or session.get("from")
     usb_dev = usb.get("dev")
-    usb_src = usb.get("src", usb.get("prefsrc"))
+    usb_src = usb.get("src") or usb.get("prefsrc") or usb.get("from")
     if not isinstance(session_dev, str) or not isinstance(session_src, str) or not isinstance(usb_dev, str):
         return None, "trasa SSH lub USB nie zawiera wymaganych danych; zmiana zablokowana"
     try:
