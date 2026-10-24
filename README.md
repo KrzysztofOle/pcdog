@@ -48,6 +48,14 @@ Można go bezpiecznie uruchomić ponownie. Szczegóły przygotowania systemu są
 [dokumentacji systemu](docs/raspberry-pi-os.md), a obsługa usługi, logów i
 health check jest opisana w [dokumentacji runtime](docs/runtime.md).
 
+## Odczytowe CLI PcDog
+
+Po instalacji runtime dostępne jest `pcdog` (bez argumentów lub `pcdog help`
+pokazuje pomoc). Polecenia `pcdog status`, `pcdog network status`,
+`pcdog wifi profiles` i `pcdog usb status` służą wyłącznie do diagnostyki;
+nie wymagają `sudo` i nie zmieniają konfiguracji. Szczegóły prezentacji stanu,
+statusów wyjścia i instalacji opisuje [dokumentacja runtime](docs/runtime.md).
+
 ## USB service channel SSH dla PcDog
 
 USB Service Channel PcDog1 używa izolowanego połączenia

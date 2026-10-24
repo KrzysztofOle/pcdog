@@ -246,6 +246,36 @@ plików.
 
 ## Bootstrap i autostart
 
+### Odczytowe CLI `pcdog`
+
+Instalator runtime udostępnia `/usr/local/bin/pcdog`. Narzędzie nie wymaga
+`sudo`; bez argumentów oraz po `help` pokazuje pomoc. Dostępne polecenia:
+
+```text
+pcdog status
+pcdog network status
+pcdog wifi profiles
+pcdog usb status
+```
+
+`status` agreguje health check runtime, odczyt interfejsów z
+`network_status`, profile Wi-Fi dostępne przez `nmcli connection show` oraz
+`pcdog-usb-mode status`. Widoki sieci/Wi-Fi/USB są niezależne: niedostępne
+źródło jest oznaczane osobno, a pozostałe wyniki nadal są prezentowane.
+Wyjście rozróżnia `OK`, `BRAK DANYCH`, `NIEDOSTĘPNE` i `BŁĄD`; kod 0 oznacza,
+że wszystkie wymagane źródła danego polecenia odpowiedziały, kod 1 brak lub
+błąd źródła, a kod 2 błędną składnię.
+
+Lista Wi-Fi zawiera wyłącznie nazwę profilu i aktywne urządzenie; CLI nie pyta
+o hasła, sekrety ani UUID. Polecenia są odczytowe i nie udostępniają skanowania,
+zmiany profili, przełączania USB ani sterowania POWER/RESET.
+
+`scripts/install-runtime.sh` instaluje narzędzie razem z pakietem runtime.
+Jest to instalator uzgadniający runtime, który może uruchamiać lub restartować
+usługi, gdy wykryje zmienione pliki. Przed użyciem na działającym urządzeniu
+należy przejrzeć `--check` i procedurę wdrożenia; sam CLI nie instaluje się na
+urządzeniu i niczego tam nie zmienia.
+
 Zwykłe uruchomienie:
 
 ```bash
