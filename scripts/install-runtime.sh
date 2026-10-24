@@ -20,7 +20,6 @@ readonly HARDWARE_AGENT_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-hardware-agent"
 readonly DIAGNOSTIC_CONTROLS_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-diagnostic-controls"
 readonly PCDOG_TEST_BINARY="$RUNTIME_DIRECTORY/bin/pcdog-test"
 readonly PCDOG_TEST_COMMAND='/usr/local/sbin/pcdog-test'
-readonly PCDOG_CLI_COMMAND='/usr/local/bin/pcdog'
 readonly RUNTIME_LIBRARY_DIRECTORY="$RUNTIME_DIRECTORY/lib"
 readonly RUNTIME_PACKAGE_DIRECTORY="$RUNTIME_LIBRARY_DIRECTORY/pcdog_runtime"
 readonly RUNTIME_WEB_PANEL_DIRECTORY="$RUNTIME_PACKAGE_DIRECTORY/web_panel"
@@ -43,7 +42,6 @@ readonly NETWORK_AGENT_SOURCE="$project_dir/runtime/pcdog-network-agent.sh"
 readonly HARDWARE_AGENT_SOURCE="$project_dir/runtime/pcdog-hardware-agent.sh"
 readonly DIAGNOSTIC_CONTROLS_SOURCE="$project_dir/runtime/pcdog-diagnostic-controls.sh"
 readonly PCDOG_TEST_SOURCE="$project_dir/runtime/pcdog-test.sh"
-readonly PCDOG_CLI_SOURCE="$project_dir/runtime/pcdog-cli.sh"
 readonly SERVICE_SOURCE="$project_dir/systemd/$SERVICE_NAME"
 readonly SYSTEM_AGENT_SERVICE_SOURCE="$project_dir/systemd/$SYSTEM_AGENT_SERVICE_NAME"
 readonly NETWORK_AGENT_SERVICE_SOURCE="$project_dir/systemd/$NETWORK_AGENT_SERVICE_NAME"
@@ -141,7 +139,6 @@ runtime_layout_is_correct() {
   file_matches "$DIAGNOSTIC_CONTROLS_SOURCE" "$DIAGNOSTIC_CONTROLS_BINARY" 700 || return 1
   file_matches "$PCDOG_TEST_SOURCE" "$PCDOG_TEST_BINARY" 700 || return 1
   file_matches "$PCDOG_TEST_SOURCE" "$PCDOG_TEST_COMMAND" 700 || return 1
-  file_matches "$PCDOG_CLI_SOURCE" "$PCDOG_CLI_COMMAND" 755 || return 1
   file_matches "$SERVICE_SOURCE" "$SERVICE_PATH" 644 || return 1
   file_matches "$SYSTEM_AGENT_SERVICE_SOURCE" "$SYSTEM_AGENT_SERVICE_PATH" 644 || return 1
   file_matches "$NETWORK_AGENT_SERVICE_SOURCE" "$NETWORK_AGENT_SERVICE_PATH" 644 || return 1
@@ -171,6 +168,7 @@ if "$check_only"; then
   systemctl is-enabled --quiet "$GPIO_INPUT_INIT_SERVICE_NAME" || die "Usługa ${GPIO_INPUT_INIT_SERVICE_NAME} nie jest włączona."
   systemctl is-active --quiet "$GPIO_INPUT_INIT_SERVICE_NAME" || die "Usługa ${GPIO_INPUT_INIT_SERVICE_NAME} nie jest aktywna."
   "$script_dir/health-check.sh"
+  "$script_dir/install-cli.sh" --check
   log_success 'Runtime PcDog i usługa systemd są poprawnie zainstalowane.'
   exit 0
 fi
@@ -181,6 +179,10 @@ require_command getent
 require_command install
 require_command systemctl
 require_command useradd
+
+# Keep the CLI's self-contained, versioned install separate from the runtime
+# tree. This installer may manage services later; install-cli.sh never does.
+"$script_dir/install-cli.sh"
 
 if getent passwd "$RUNTIME_USER" >/dev/null; then
   runtime_user_is_safe || die "Istniejący użytkownik ${RUNTIME_USER} nie jest bezpiecznym użytkownikiem systemowym PcDog."
@@ -259,9 +261,6 @@ if install_if_changed "$PCDOG_TEST_SOURCE" "$PCDOG_TEST_BINARY" 700; then
   runtime_changed=true
 fi
 if install_if_changed "$PCDOG_TEST_SOURCE" "$PCDOG_TEST_COMMAND" 700; then
-  runtime_changed=true
-fi
-if install_if_changed "$PCDOG_CLI_SOURCE" "$PCDOG_CLI_COMMAND" 755; then
   runtime_changed=true
 fi
 for relative_path in "${PYTHON_PACKAGE_FILES[@]}"; do

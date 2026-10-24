@@ -55,6 +55,8 @@ pokazuje pomoc). Polecenia `pcdog status`, `pcdog network status`,
 `pcdog wifi profiles` i `pcdog usb status` służą wyłącznie do diagnostyki;
 nie wymagają `sudo` i nie zmieniają konfiguracji. Szczegóły prezentacji stanu,
 statusów wyjścia i instalacji opisuje [dokumentacja runtime](docs/runtime.md).
+CLI można też instalować lub aktualizować niezależnie przez
+`sudo ./scripts/install-cli.sh`; ta ścieżka nie zarządza usługami.
 
 ## USB service channel SSH dla PcDog
 

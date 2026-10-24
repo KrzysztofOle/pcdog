@@ -248,7 +248,8 @@ plików.
 
 ### Odczytowe CLI `pcdog`
 
-Instalator runtime udostępnia `/usr/local/bin/pcdog`. Narzędzie nie wymaga
+Instalator runtime udostępnia `/usr/local/bin/pcdog` przez dedykowany,
+wersjonowany instalator CLI. Narzędzie nie wymaga
 `sudo`; bez argumentów oraz po `help` pokazuje pomoc. Dostępne polecenia:
 
 ```text
@@ -270,11 +271,43 @@ Lista Wi-Fi zawiera wyłącznie nazwę profilu i aktywne urządzenie; CLI nie py
 o hasła, sekrety ani UUID. Polecenia są odczytowe i nie udostępniają skanowania,
 zmiany profili, przełączania USB ani sterowania POWER/RESET.
 
-`scripts/install-runtime.sh` instaluje narzędzie razem z pakietem runtime.
-Jest to instalator uzgadniający runtime, który może uruchamiać lub restartować
-usługi, gdy wykryje zmienione pliki. Przed użyciem na działającym urządzeniu
-należy przejrzeć `--check` i procedurę wdrożenia; sam CLI nie instaluje się na
-urządzeniu i niczego tam nie zmienia.
+### Samodzielna instalacja i rollback CLI
+
+CLI można dodać lub zaktualizować niezależnie od pełnego runtime:
+
+```bash
+sudo ./scripts/install-cli.sh
+./scripts/install-cli.sh --check
+```
+
+Instalator wymaga Pythona 3.9 lub nowszego oraz uprawnień root do zapisu w
+`/opt/pcdog-cli` i `/usr/local/bin/pcdog`. Zależności diagnostyczne (`nmcli`,
+`pcdog-healthcheck`, `pcdog-usb-mode`) sprawdza informacyjnie; ich brak nie
+blokuje instalacji, a odpowiednia sekcja CLI raportuje `NIEDOSTĘPNE`. Każde
+wydanie przechowuje kopię tylko trzech modułów potrzebnych CLI w katalogu
+wersjonowanym według sumy SHA-256. Aktywne wydanie wskazuje atomowy link
+`/opt/pcdog-cli/current`. Powtórna instalacja tej samej wersji jest bez zmian.
+
+Przed nadpisaniem launcher sprawdza, czy jego zawartość jest nieznana,
+zarządzana przez instalator albo zgodna z poprzednim launcherem runtime z
+repozytorium. Nieznanych plików ani katalogów nie nadpisuje. Instalator nie
+wywołuje systemd, nie zapisuje konfiguracji runtime/sieci/USB/GPIO i nie
+restartuje usług. `scripts/install-runtime.sh` zachowuje integrację: uruchamia
+ten sam instalator CLI; jego własne pozostałe etapy nadal mogą zarządzać i
+restartować usługi runtime.
+
+Rollback przywraca poprzednie wydanie, a po pierwszej instalacji usuwa launcher
+albo przywraca rozpoznany starszy launcher:
+
+```bash
+sudo ./scripts/install-cli.sh --rollback
+```
+
+Po rollbacku zweryfikuj wycofany stan przez `./scripts/install-cli.sh --check`
+(dla rollbacku do starszej wersji wynik może być niezgodny z bieżącymi
+źródłami) oraz uruchom `pcdog help`. W razie nieudanego `--check` nie wykonuj
+pełnego instalatora runtime bez sprawdzenia jego zakresu: ten installer może
+restartować usługi po zmianie plików.
 
 Zwykłe uruchomienie:
 

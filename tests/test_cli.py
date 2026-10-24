@@ -87,6 +87,30 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn(secret, output.getvalue())
 
+    def test_all_status_readers_run_without_sudo(self):
+        calls = []
+        def fake_run(arguments, **kwargs):
+            calls.append(arguments)
+            if arguments == [cli.HEALTH_CHECK]:
+                return subprocess.CompletedProcess(arguments, 0, "HEALTHY\n", "")
+            if arguments[-2:] == ["connection", "show"]:
+                return subprocess.CompletedProcess(arguments, 0, "Home:802-11-wireless:wlan0\n", "")
+            return subprocess.CompletedProcess(arguments, 0,
+                "configured mode: windows\nactive USB function: rndis.usb0\nUDC bound: dummy\n", "")
+        with patch.object(cli, "_run_readonly", side_effect=fake_run):
+            self.assertEqual(cli.read_health()["status"], "OK")
+            self.assertEqual(cli.read_wifi_profiles()["status"], "OK")
+            self.assertEqual(cli.read_usb_status()["status"], "OK")
+        self.assertEqual(calls[0], [cli.HEALTH_CHECK])
+        self.assertEqual(calls[1][-2:], ["connection", "show"])
+        self.assertEqual(calls[2], [cli.USB_MODE, "status"])
+        self.assertTrue(all(arguments[0] != "sudo" for arguments in calls))
+        from pcdog_runtime.network_status import read_network_status
+        with patch("pcdog_runtime.network_status.subprocess.run", return_value=subprocess.CompletedProcess(
+                ["nmcli"], 0, "GENERAL.DEVICE:wlan0\n", "")) as network_run:
+            read_network_status()
+        self.assertEqual(network_run.call_args.args[0][0], "nmcli")
+
 
 if __name__ == "__main__":
     unittest.main()
