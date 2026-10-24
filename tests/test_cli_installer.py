@@ -76,6 +76,23 @@ class CliInstallerTests(unittest.TestCase):
         self.assertIn("windows", result.stdout)
         self.assertIn("mac", result.stdout)
 
+    def test_update_accepts_managed_three_module_release_and_keeps_rollback(self):
+        with patch.object(installer_module, "MODULES", installer_module.LEGACY_MODULES):
+            self.assertTrue(self.installer.install())
+        old_target = os.readlink(self.root / "current")
+        self.assertEqual(
+            {path.name for path in (self.root / old_target / "pcdog_runtime").iterdir()},
+            set(installer_module.LEGACY_MODULES),
+        )
+        self.assertTrue(self.installer.install())
+        new_target = os.readlink(self.root / "current")
+        self.assertNotEqual(new_target, old_target)
+        self.assertEqual(os.readlink(self.root / "previous"), old_target)
+        self.installer.check()
+        self.installer.rollback()
+        self.assertEqual(os.readlink(self.root / "current"), old_target)
+        self.assertEqual(os.readlink(self.root / "previous"), new_target)
+
     def test_update_keeps_previous_release_and_rollback_swaps_back(self):
         self.installer.install()
         first = os.readlink(self.root / "current")

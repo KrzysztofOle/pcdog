@@ -26,6 +26,7 @@ LEGACY_LAUNCHER = (
     b"exec /usr/bin/python3 -m pcdog_runtime.cli \"$@\"\n"
 )
 MODULES = ("__init__.py", "cli.py", "network_status.py", "usb_mode.py")
+LEGACY_MODULES = ("__init__.py", "cli.py", "network_status.py")
 CLI_PACKAGE_INIT = b'"""Minimal package initializer for the standalone PcDog CLI."""\n'
 
 
@@ -163,10 +164,11 @@ class CliInstaller:
         expected_names = {"pcdog_runtime"}
         if {item.name for item in path.iterdir()} != expected_names:
             raise InstallError(f"wydanie zawiera niezarządzane pliki: {path}")
-        if {item.name for item in package.iterdir()} != set(MODULES):
+        package_names = {item.name for item in package.iterdir()}
+        if package_names not in (set(MODULES), set(LEGACY_MODULES)):
             raise InstallError(f"pakiet wydania zawiera niezarządzane pliki: {package}")
         content: dict[str, bytes] = {}
-        for name in MODULES:
+        for name in sorted(package_names):
             content[name] = self._check_regular_file(package / name, mode=0o644)
         if path.name != self._digest(content):
             raise InstallError(f"suma kontrolna wydania nie zgadza się z nazwą katalogu: {path}")
